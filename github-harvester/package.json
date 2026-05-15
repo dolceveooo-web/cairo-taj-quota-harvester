@@ -1,0 +1,15 @@
+{
+  "name": "github-cloud-harvester",
+  "version": "1.0.0",
+  "description": "GitHub Actions cloud harvester for WE Egypt quota",
+  "main": "harvester.js",
+  "scripts": {
+    "start": "node harvester.js"
+  },
+  "dependencies": {
+    "puppeteer": "^21.6.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "node-fetch": "^2.7.0"
+  }
+}
