@@ -17,13 +17,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
-          cache-dependency-path: github-harvester/package-lock.json
+      
+      - name: Cache Puppeteer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/puppeteer
+          key: puppeteer-${{ runner.os }}-${{ hashFiles('github-harvester/package-lock.json') }}
       
       - name: Install dependencies
         run: |
           cd github-harvester
-          npm ci --prefer-offline --no-audit
+          npm ci --prefer-offline --no-audit --legacy-peer-deps
       
       - name: Run harvester
         env:
