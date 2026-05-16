@@ -442,7 +442,191 @@ async function harvestQuota() {
 
     const finalUrl = page.url();
     console.log('  Final URL:', finalUrl);
-    if (finalUrl.includes('login')) throw new Error('Still on login page');
+
+    // ══════════════════════════════════════
+    // CAPTCHA HANDLER (fallback if still on login)
+    // ══════════════════════════════════════
+    if (finalUrl.includes('login')) {
+      console.log('\n  ⚠ Still on login - checking for captcha...');
+
+      const captchaVisible = await page.evaluate(() => {
+        const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
+        const title = document.body.innerText;
+        return !!modal || title.toLowerCase().includes('verification') || title.toLowerCase().includes('enter code');
+      });
+
+      if (captchaVisible) {
+        console.log('  🔐 CAPTCHA DETECTED - attempting to solve...');
+
+        let captchaSolved = false;
+
+        // ── CAPTCHA METHOD 1: Read src/data-uri of img, extract text via canvas ──
+        if (!captchaSolved) {
+          try {
+            console.log('  [C1] Canvas pixel analysis...');
+            const captchaText = await page.evaluate(() => {
+              const img = document.querySelector('.ant-modal img, [class*="modal"] img, [class*="captcha"] img, img');
+              if (!img) throw new Error('no img');
+              const canvas = document.createElement('canvas');
+              canvas.width = img.naturalWidth || img.width;
+              canvas.height = img.naturalHeight || img.height;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0);
+              // Read pixel data to detect dark pixels (text)
+              const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+              return { src: img.src, w: canvas.width, h: canvas.height, pixels: data.length };
+            });
+            console.log('  [C1] Captcha img src type:', captchaText.src?.substring(0, 50));
+            console.log('  [C1] Image size:', captchaText.w, 'x', captchaText.h);
+          } catch (e) {
+            console.log('  [C1] Failed:', e.message);
+          }
+        }
+
+        // ── CAPTCHA METHOD 2: Read img src directly (base64 or URL) ──
+        if (!captchaSolved) {
+          try {
+            console.log('  [C2] Reading captcha image src...');
+            const imgInfo = await page.evaluate(() => {
+              const imgs = document.querySelectorAll('img');
+              for (let img of imgs) {
+                const rect = img.getBoundingClientRect();
+                if (rect.width > 50 && rect.width < 300 && rect.height > 20) {
+                  return { src: img.src, alt: img.alt, width: rect.width, height: rect.height };
+                }
+              }
+              return null;
+            });
+            if (imgInfo) {
+              console.log('  [C2] Found captcha img:', imgInfo.width, 'x', imgInfo.height, 'alt:', imgInfo.alt);
+              // If alt text contains the answer (lazy implementations)
+              if (imgInfo.alt && imgInfo.alt.length >= 4 && imgInfo.alt.length <= 8) {
+                console.log('  [C2] Alt text may be answer:', imgInfo.alt);
+                const codeInput = await page.$('#login_input_type_01, input[placeholder*="code" i], input[placeholder*="Code"], .ant-modal input, [class*="modal"] input[type="text"]');
+                if (codeInput) {
+                  await codeInput.click();
+                  await sleep(300);
+                  await codeInput.type(imgInfo.alt, { delay: 50 });
+                  await sleep(500);
+                  await page.evaluate(() => {
+                    const btns = document.querySelectorAll('button');
+                    for (let btn of btns) {
+                      if (btn.textContent.toLowerCase().includes('ok') || btn.textContent.toLowerCase().includes('confirm')) {
+                        btn.click(); return;
+                      }
+                    }
+                  });
+                  await sleep(5000);
+                  if (!page.url().includes('login')) { captchaSolved = true; console.log('  [C2] ✓ Solved via alt text!'); }
+                }
+              }
+            }
+          } catch (e) {
+            console.log('  [C2] Failed:', e.message);
+          }
+        }
+
+        // ── CAPTCHA METHOD 3: Screenshot captcha img → Tesseract OCR ──
+        if (!captchaSolved) {
+          try {
+            console.log('  [C3] Tesseract OCR...');
+            const Tesseract = require('tesseract.js');
+            const captchaImgEl = await page.$('.ant-modal img, [class*="modal"] img, [class*="captcha"] img, img');
+            if (!captchaImgEl) throw new Error('no captcha img element');
+            const imgBuffer = await captchaImgEl.screenshot();
+            const { data: { text } } = await Tesseract.recognize(imgBuffer, 'eng', {
+              tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+            });
+            const cleaned = text.replace(/[^A-Za-z0-9]/g, '').trim();
+            console.log('  [C3] OCR result:', cleaned);
+            if (cleaned.length >= 3) {
+              const codeInput = await page.$('#login_input_type_01, input[placeholder*="code" i], input[placeholder*="Code"], .ant-modal input[type="text"], [class*="modal"] input[type="text"]');
+              if (!codeInput) throw new Error('no code input');
+              await codeInput.click(); await sleep(300);
+              await codeInput.type(cleaned, { delay: 50 });
+              await sleep(500);
+              await page.evaluate(() => {
+                const btns = document.querySelectorAll('button');
+                for (let btn of btns) {
+                  if (btn.textContent.toLowerCase().includes('ok') || btn.textContent.toLowerCase().includes('confirm')) {
+                    btn.click(); return;
+                  }
+                }
+              });
+              await sleep(5000);
+              if (!page.url().includes('login')) { captchaSolved = true; console.log('  [C3] ✓ Solved via OCR!'); }
+            }
+          } catch (e) {
+            console.log('  [C3] Failed:', e.message);
+          }
+        }
+
+        // ── CAPTCHA METHOD 4: Refresh captcha and retry OCR ──
+        if (!captchaSolved) {
+          try {
+            console.log('  [C4] Refresh captcha + retry OCR...');
+            // Click refresh button
+            await page.evaluate(() => {
+              const btns = document.querySelectorAll('button, img, span, i');
+              for (let btn of btns) {
+                const cls = btn.className?.toLowerCase() || '';
+                if (cls.includes('refresh') || cls.includes('reload') || cls.includes('sync')) {
+                  btn.click(); return;
+                }
+              }
+            });
+            await sleep(2000);
+            const Tesseract = require('tesseract.js');
+            const captchaImgEl = await page.$('.ant-modal img, [class*="modal"] img, img');
+            if (!captchaImgEl) throw new Error('no img after refresh');
+            const imgBuffer = await captchaImgEl.screenshot();
+            const { data: { text } } = await Tesseract.recognize(imgBuffer, 'eng', {
+              tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
+            });
+            const cleaned = text.replace(/[^A-Za-z0-9]/g, '').trim();
+            console.log('  [C4] OCR after refresh:', cleaned);
+            if (cleaned.length >= 3) {
+              const codeInput = await page.$('#login_input_type_01, input[placeholder*="code" i], .ant-modal input[type="text"], [class*="modal"] input[type="text"]');
+              if (!codeInput) throw new Error('no code input');
+              await codeInput.click(); await sleep(300);
+              await codeInput.type(cleaned, { delay: 50 });
+              await sleep(500);
+              await page.evaluate(() => {
+                const btns = document.querySelectorAll('button');
+                for (let btn of btns) {
+                  if (btn.textContent.toLowerCase().includes('ok') || btn.textContent.toLowerCase().includes('confirm')) {
+                    btn.click(); return;
+                  }
+                }
+              });
+              await sleep(5000);
+              if (!page.url().includes('login')) { captchaSolved = true; console.log('  [C4] ✓ Solved after refresh!'); }
+            }
+          } catch (e) {
+            console.log('  [C4] Failed:', e.message);
+          }
+        }
+
+        // ── CAPTCHA METHOD 5: Cancel captcha and retry whole login ──
+        if (!captchaSolved) {
+          console.log('  [C5] Cancelling captcha - will retry whole attempt...');
+          await page.evaluate(() => {
+            const btns = document.querySelectorAll('button');
+            for (let btn of btns) {
+              if (btn.textContent.toLowerCase().includes('cancel')) { btn.click(); return; }
+            }
+          });
+          await sleep(2000);
+          throw new Error('Captcha could not be solved - retrying');
+        }
+
+        if (!captchaSolved) throw new Error('Still on login page after captcha attempts');
+
+      } else {
+        throw new Error('Still on login page - no captcha detected');
+      }
+    }
+
     console.log('  ✓ Login successful!\n');
 
     // ══════════════════════════════════════
