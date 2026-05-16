@@ -66,22 +66,37 @@ async function harvestQuota() {
     await sleep(8000);
     console.log('  ✓ Waited 8 seconds for dynamic content');
     
-    const url1 = page.url();
-    const title1 = await page.title();
+    const url1 = await page.url().catch(() => 'unknown');
+    const title1 = await page.title().catch(() => 'unknown');
     console.log('  URL:', url1);
     console.log('  Title:', title1);
     
     // Wait for ANY form element to appear
     console.log('  Waiting for login form elements...');
-    await page.waitForFunction(
-      () => {
-        return document.querySelector('#login_loginid_input_01') || 
-               document.querySelector('input[type="text"]') ||
-               document.querySelector('.ant-input');
-      },
-      { timeout: 30000 }
-    );
-    console.log('  ✓ Form elements detected');
+    try {
+      await page.waitForFunction(
+        () => {
+          return document.querySelector('#login_loginid_input_01') || 
+                 document.querySelector('input[type="text"]') ||
+                 document.querySelector('.ant-input');
+        },
+        { timeout: 30000 }
+      );
+      console.log('  ✓ Form elements detected');
+    } catch (e) {
+      console.log('  ⚠ Form wait timeout, checking if elements exist anyway...');
+      const formExists = await page.$('#login_loginid_input_01');
+      if (!formExists) {
+        console.log('  ❌ No form found, taking screenshot...');
+        const screenshot = await page.screenshot({ encoding: 'base64' });
+        console.log('  Screenshot length:', screenshot.length);
+        const html = await page.content();
+        console.log('  Page HTML length:', html.length);
+        console.log('  First 500 chars:', html.substring(0, 500));
+        throw new Error('Login form never appeared');
+      }
+      console.log('  ✓ Form exists despite timeout');
+    }
     
     await sleep(3000);
     console.log('  ✓ Additional 3s wait');
@@ -291,9 +306,9 @@ async function harvestQuota() {
     }
     
     console.log('  Waiting for navigation...');
-    await sleep(15000);
+    await sleep(12000);
     
-    const url2 = page.url();
+    const url2 = await page.url().catch(() => 'unknown');
     console.log('  New URL:', url2);
     
     if (url2.includes('#/login')) {
