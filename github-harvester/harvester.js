@@ -50,11 +50,21 @@ async function harvestQuota() {
     await page.setViewport({ width: 1366, height: 768 });
     
     console.log('1️⃣ Navigating...');
-    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 60000 });
+    const response = await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 60000 });
+    console.log('  Status:', response.status());
     await sleep(randomDelay(4000, 6000));
     
+    const pageTitle = await page.title();
+    console.log('  Page title:', pageTitle);
+    
+    const hasLoginForm = await page.evaluate(() => {
+      return document.querySelectorAll('input').length >= 2;
+    });
+    console.log('  Login form present:', hasLoginForm);
+    
     console.log('2️⃣ Username...');
-    await page.waitForSelector('#login_loginid_input_01', { timeout: 20000 });
+    await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
+    await page.waitForSelector('#login_loginid_input_01', { timeout: 20000, visible: true });
     await page.focus('#login_loginid_input_01');
     await sleep(200);
     await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
