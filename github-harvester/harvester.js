@@ -1,5 +1,8 @@
-const { chromium } = require('playwright-chromium');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fetch = require('node-fetch');
+
+puppeteer.use(StealthPlugin());
 
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
@@ -21,37 +24,46 @@ async function harvestQuota() {
   
   let browser;
   try {
-    browser = await chromium.launch({
+    browser = await puppeteer.launch({
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ],
+      ignoreDefaultArgs: ['--enable-automation']
     });
 
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      viewport: { width: 1920, height: 1080 },
-      locale: 'en-US',
-      timezoneId: 'Africa/Cairo'
+    const page = await browser.newPage();
+
+    await page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => false });
+      window.navigator.chrome = { runtime: {} };
+      Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
     });
-    
-    const page = await context.newPage();
+
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1366, height: 768 });
     
     console.log('1️⃣ Navigating...');
-    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle', timeout: 60000 });
+    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 60000 });
     await sleep(randomDelay(4000, 6000));
     
     console.log('2️⃣ Username...');
-    console.log('  Username length:', WE_USERNAME ? WE_USERNAME.length : 'undefined');
     await page.waitForSelector('#login_loginid_input_01', { timeout: 20000 });
     await page.focus('#login_loginid_input_01');
     await sleep(200);
     await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
-    await sleep(randomDelay(800, 1200));
-    const usernameValue = await page.inputValue('#login_loginid_input_01');
-    console.log('  Username filled:', usernameValue.length, 'chars');
+    await sleep(800);
     
     console.log('3️⃣ Service type...');
-    await page.click('.ant-select-selector');
-    await sleep(randomDelay(700, 1000));
+    const dropdown = await page.$('.ant-select-selector');
+    if (!dropdown) throw new Error('Dropdown not found');
+    await dropdown.click();
+    await sleep(800);
     const selected = await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
       const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
@@ -59,16 +71,13 @@ async function harvestQuota() {
       return null;
     });
     console.log('  Selected:', selected || 'NOT FOUND');
-    await sleep(randomDelay(1500, 2000));
+    await sleep(500);
     
     console.log('4️⃣ Password...');
-    console.log('  Password length:', WE_PASSWORD ? WE_PASSWORD.length : 'undefined');
     await page.focus('#login_password_input_01');
     await sleep(200);
     await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
-    await sleep(randomDelay(1000, 1500));
-    const passwordValue = await page.inputValue('#login_password_input_01');
-    console.log('  Password filled:', passwordValue.length, 'chars');
+    await sleep(300);
     
     console.log('5️⃣ Submit...');
     await page.evaluate(() => {
@@ -76,22 +85,18 @@ async function harvestQuota() {
       const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
       if (btn) btn.click();
     });
-    await sleep(6000);
+    await sleep(8000);
     
     const url = page.url();
     console.log('  URL:', url);
     
     if (url.includes('#/login')) {
-      const errorMsg = await page.evaluate(() => {
-        const errorEl = document.querySelector('.ant-form-item-explain-error, .error-message, [class*="error"]');
-        return errorEl ? errorEl.innerText : 'No error message found';
-      });
-      console.log('  Error on page:', errorMsg);
       throw new Error('Login failed');
     }
+    console.log('  ✓ Login successful');
     
     console.log('6️⃣ Extracting...');
-    await sleep(randomDelay(5000, 7000));
+    await sleep(2000);
     
     const data = await page.evaluate(() => {
       const spans = Array.from(document.querySelectorAll('span, div'));
