@@ -70,53 +70,104 @@ async function harvestQuota() {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1366, height: 768 });
     
-    // STEP 1: Navigate with 4 fallback methods
+    // STEP 1: Navigate with 5 fallback methods
     console.log('1️⃣ Navigating...');
     await tryMultipleMethods([
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 25000 });
-        await page.waitForSelector('.ant-select', { timeout: 10000 }).catch(() => {});
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await sleep(5000);
+        await page.waitForSelector('#login_loginid_input_01', { timeout: 15000, visible: true });
+        console.log('  ✓ Login form detected');
+      },
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 35000 });
         await sleep(3000);
+        await page.waitForSelector('#login_loginid_input_01', { timeout: 15000 });
+        console.log('  ✓ Login form detected');
       },
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle0', timeout: 30000 });
-        await sleep(2000);
-      },
-      async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 25000 });
-        await sleep(4000);
-      },
-      async () => {
-        await page.goto('https://my.te.eg/echannel/', { timeout: 25000 });
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 30000 });
         await sleep(6000);
+        await page.waitForSelector('#login_loginid_input_01', { timeout: 15000 });
+        console.log('  ✓ Login form detected');
+      },
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { timeout: 30000 });
+        await sleep(8000);
+        const formExists = await page.$('#login_loginid_input_01');
+        if (!formExists) throw new Error('Login form not found');
+        console.log('  ✓ Login form detected');
+      },
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await sleep(12000);
+        await page.waitForFunction(
+          () => document.querySelector('#login_loginid_input_01'),
+          { timeout: 20000 }
+        );
+        console.log('  ✓ Login form detected');
       }
-    ], 'Navigation', 35000);
+    ], 'Navigation', 50000);
     
-    // STEP 2: Fill username with 3 fallback methods
+    const currentUrl = page.url();
+    console.log('  Current URL:', currentUrl);
+    const pageTitle = await page.title();
+    console.log('  Page title:', pageTitle);
+    
+    // STEP 2: Fill username with 5 fallback methods
     console.log('2️⃣ Username...');
     await tryMultipleMethods([
       async () => {
-        await page.waitForSelector('#login_loginid_input_01', { timeout: 10000, visible: true });
+        await sleep(1000);
+        await page.waitForSelector('#login_loginid_input_01', { timeout: 15000, visible: true });
         await page.focus('#login_loginid_input_01');
-        await sleep(200);
-        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
+        await sleep(300);
+        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 30 });
         await sleep(500);
       },
       async () => {
-        await page.waitForFunction(() => document.querySelector('#login_loginid_input_01'), { timeout: 10000 });
+        await sleep(2000);
+        await page.waitForFunction(() => document.querySelector('#login_loginid_input_01'), { timeout: 15000 });
         await page.evaluate((username) => {
-          document.querySelector('#login_loginid_input_01').value = username;
+          const input = document.querySelector('#login_loginid_input_01');
+          if (input) {
+            input.value = username;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
         }, WE_USERNAME);
         await sleep(500);
       },
       async () => {
-        await sleep(2000);
+        await sleep(3000);
         const input = await page.$('#login_loginid_input_01');
         if (!input) throw new Error('Username input not found');
-        await input.type(WE_USERNAME, { delay: 20 });
+        await input.click();
+        await sleep(200);
+        await input.type(WE_USERNAME, { delay: 30 });
+        await sleep(500);
+      },
+      async () => {
+        await sleep(4000);
+        await page.click('#login_loginid_input_01');
+        await sleep(300);
+        await page.keyboard.type(WE_USERNAME, { delay: 30 });
+        await sleep(500);
+      },
+      async () => {
+        await sleep(6000);
+        await page.evaluate((username) => {
+          const input = document.querySelector('#login_loginid_input_01');
+          if (!input) throw new Error('Username input not found');
+          input.focus();
+          input.value = username;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new Event('blur', { bubbles: true }));
+        }, WE_USERNAME);
         await sleep(500);
       }
-    ], 'Username input');
+    ], 'Username input', 30000);
     
     // STEP 3: Select service type with 6 fallback methods
     console.log('3️⃣ Service type...');
