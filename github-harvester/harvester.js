@@ -23,7 +23,10 @@ async function tryMultipleMethods(methodsArray, stepName) {
   for (let i = 0; i < methodsArray.length; i++) {
     try {
       console.log(`  Method ${i + 1}/${methodsArray.length}...`);
-      const result = await methodsArray[i]();
+      const result = await Promise.race([
+        methodsArray[i](),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Method timeout')), 15000))
+      ]);
       console.log(`  ✓ Method ${i + 1} succeeded`);
       return result;
     } catch (error) {
@@ -115,7 +118,7 @@ async function harvestQuota() {
         const dropdown = await page.$('.ant-select-selector');
         if (!dropdown) throw new Error('Dropdown not found');
         await dropdown.click();
-        await sleep(800);
+        await sleep(500);
         const selected = await page.evaluate(() => {
           const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
           const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
@@ -123,22 +126,22 @@ async function harvestQuota() {
           return null;
         });
         if (!selected) throw new Error('Internet option not found');
-        await sleep(500);
+        await sleep(300);
       },
       async () => {
         await page.click('.ant-select');
-        await sleep(1000);
-        await page.keyboard.type('Internet');
-        await sleep(300);
-        await page.keyboard.press('Enter');
         await sleep(500);
+        await page.keyboard.type('Internet');
+        await sleep(200);
+        await page.keyboard.press('Enter');
+        await sleep(300);
       },
       async () => {
         await page.evaluate(() => {
           const select = document.querySelector('.ant-select-selector');
           if (select) select.click();
         });
-        await sleep(1000);
+        await sleep(500);
         await page.evaluate(() => {
           const items = document.querySelectorAll('[class*="select-item"]');
           for (let item of items) {
@@ -148,7 +151,7 @@ async function harvestQuota() {
             }
           }
         });
-        await sleep(500);
+        await sleep(300);
       }
     ], 'Service type selection');
     
@@ -331,8 +334,7 @@ async function harvestQuota() {
               },
               lastUpdate: { stringValue: quotaData.lastUpdate }
             }
-          }),
-          timeout: 10000
+          })
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       },
