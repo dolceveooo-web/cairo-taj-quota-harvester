@@ -67,26 +67,16 @@ async function harvestQuota() {
     console.log('  ✓ Waited 8 seconds for dynamic content');
     
     console.log('  Getting URL...');
-    let url1, title1;
+    let url1 = 'unknown';
     try {
       url1 = page.url();
       console.log('  ✓ Got URL:', url1);
     } catch (e) {
       console.log('  ⚠ URL error:', e.message);
-      url1 = 'unknown';
     }
     
-    console.log('  Getting title...');
-    try {
-      title1 = await Promise.race([
-        page.title(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Title timeout')), 5000))
-      ]);
-      console.log('  ✓ Got title:', title1);
-    } catch (e) {
-      console.log('  ⚠ Title error:', e.message);
-      title1 = 'unknown';
-    }
+    // SKIP TITLE - IT HANGS FOR NO REASON
+    console.log('  Skipping title check (causes hangs)');
     
     // Wait for ANY form element to appear
     console.log('  Waiting for login form elements...');
