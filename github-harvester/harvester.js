@@ -19,6 +19,22 @@ function randomDelay(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+async function tryMultipleMethods(methodsArray, stepName) {
+  for (let i = 0; i < methodsArray.length; i++) {
+    try {
+      console.log(`  Method ${i + 1}/${methodsArray.length}...`);
+      const result = await methodsArray[i]();
+      console.log(`  ✓ Method ${i + 1} succeeded`);
+      return result;
+    } catch (error) {
+      console.log(`  ✗ Method ${i + 1} failed: ${error.message}`);
+      if (i === methodsArray.length - 1) {
+        throw new Error(`${stepName} failed - all methods exhausted`);
+      }
+    }
+  }
+}
+
 async function harvestQuota() {
   console.log('🚀 Cloud Harvester starting...');
   
@@ -49,45 +65,140 @@ async function harvestQuota() {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1366, height: 768 });
     
+    // STEP 1: Navigate with 3 fallback methods
     console.log('1️⃣ Navigating...');
-    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await sleep(5000);
+    await tryMultipleMethods([
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await sleep(3000);
+      },
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 20000 });
+        await sleep(3000);
+      },
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { timeout: 20000 });
+        await sleep(5000);
+      }
+    ], 'Navigation');
     
+    // STEP 2: Fill username with 3 fallback methods
     console.log('2️⃣ Username...');
-    await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
-    await page.waitForSelector('#login_loginid_input_01', { timeout: 20000, visible: true });
-    await page.focus('#login_loginid_input_01');
-    await sleep(200);
-    await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
-    await sleep(800);
+    await tryMultipleMethods([
+      async () => {
+        await page.waitForSelector('#login_loginid_input_01', { timeout: 10000, visible: true });
+        await page.focus('#login_loginid_input_01');
+        await sleep(200);
+        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
+        await sleep(500);
+      },
+      async () => {
+        await page.waitForFunction(() => document.querySelector('#login_loginid_input_01'), { timeout: 10000 });
+        await page.evaluate((username) => {
+          document.querySelector('#login_loginid_input_01').value = username;
+        }, WE_USERNAME);
+        await sleep(500);
+      },
+      async () => {
+        await sleep(2000);
+        const input = await page.$('#login_loginid_input_01');
+        if (!input) throw new Error('Username input not found');
+        await input.type(WE_USERNAME, { delay: 20 });
+        await sleep(500);
+      }
+    ], 'Username input');
     
+    // STEP 3: Select service type with 3 fallback methods
     console.log('3️⃣ Service type...');
-    const dropdown = await page.$('.ant-select-selector');
-    if (!dropdown) throw new Error('Dropdown not found');
-    await dropdown.click();
-    await sleep(800);
-    const selected = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
-      const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
-      if (internet) { internet.click(); return internet.textContent.trim(); }
-      return null;
-    });
-    console.log('  Selected:', selected || 'NOT FOUND');
-    await sleep(500);
+    await tryMultipleMethods([
+      async () => {
+        const dropdown = await page.$('.ant-select-selector');
+        if (!dropdown) throw new Error('Dropdown not found');
+        await dropdown.click();
+        await sleep(800);
+        const selected = await page.evaluate(() => {
+          const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
+          const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
+          if (internet) { internet.click(); return internet.textContent.trim(); }
+          return null;
+        });
+        if (!selected) throw new Error('Internet option not found');
+        await sleep(500);
+      },
+      async () => {
+        await page.click('.ant-select');
+        await sleep(1000);
+        await page.keyboard.type('Internet');
+        await sleep(300);
+        await page.keyboard.press('Enter');
+        await sleep(500);
+      },
+      async () => {
+        await page.evaluate(() => {
+          const select = document.querySelector('.ant-select-selector');
+          if (select) select.click();
+        });
+        await sleep(1000);
+        await page.evaluate(() => {
+          const items = document.querySelectorAll('[class*="select-item"]');
+          for (let item of items) {
+            if (item.textContent.toLowerCase().includes('internet')) {
+              item.click();
+              break;
+            }
+          }
+        });
+        await sleep(500);
+      }
+    ], 'Service type selection');
     
+    // STEP 4: Fill password with 3 fallback methods
     console.log('4️⃣ Password...');
-    await page.focus('#login_password_input_01');
-    await sleep(200);
-    await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
-    await sleep(300);
+    await tryMultipleMethods([
+      async () => {
+        await page.waitForSelector('#login_password_input_01', { timeout: 10000, visible: true });
+        await page.focus('#login_password_input_01');
+        await sleep(200);
+        await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
+        await sleep(300);
+      },
+      async () => {
+        await page.evaluate((password) => {
+          document.querySelector('#login_password_input_01').value = password;
+        }, WE_PASSWORD);
+        await sleep(300);
+      },
+      async () => {
+        const input = await page.$('#login_password_input_01');
+        if (!input) throw new Error('Password input not found');
+        await input.type(WE_PASSWORD, { delay: 20 });
+        await sleep(300);
+      }
+    ], 'Password input');
     
+    // STEP 5: Submit with 3 fallback methods
     console.log('5️⃣ Submit...');
-    await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
-      if (btn) btn.click();
-    });
-    await sleep(8000);
+    await tryMultipleMethods([
+      async () => {
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button'));
+          const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+          if (btn) btn.click();
+          else throw new Error('Login button not found');
+        });
+        await sleep(8000);
+      },
+      async () => {
+        await page.keyboard.press('Enter');
+        await sleep(8000);
+      },
+      async () => {
+        const button = await page.$('button[type="submit"]');
+        if (button) await button.click();
+        else throw new Error('Submit button not found');
+        await sleep(8000);
+      }
+    ], 'Submit');
     
     const url = page.url();
     console.log('  URL:', url);
@@ -97,33 +208,60 @@ async function harvestQuota() {
     }
     console.log('  ✓ Login successful');
     
+    // STEP 6: Extract data with 3 fallback methods
     console.log('6️⃣ Extracting...');
-    await sleep(2000);
-    
-    const data = await page.evaluate(() => {
-      const spans = Array.from(document.querySelectorAll('span, div'));
-      let remaining = null, used = null, balance = null, plan = null;
+    const data = await tryMultipleMethods([
+      async () => {
+        await sleep(2000);
+        return await page.evaluate(() => {
+          const spans = Array.from(document.querySelectorAll('span, div'));
+          let remaining = null, used = null, balance = null, plan = null;
 
-      for (let i = 0; i < spans.length; i++) {
-        const t = spans[i].innerText?.trim();
-        if (!t) continue;
-        if (t === 'Remaining' && spans[i-1]) remaining = parseFloat(spans[i-1].innerText);
-        if (t === 'Used' && spans[i-1]) used = parseFloat(spans[i-1].innerText);
-        if (t === 'Current Balance' && spans[i+1]) balance = parseFloat(spans[i+1].innerText);
-        if (t && t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
+          for (let i = 0; i < spans.length; i++) {
+            const t = spans[i].innerText?.trim();
+            if (!t) continue;
+            if (t === 'Remaining' && spans[i-1]) remaining = parseFloat(spans[i-1].innerText);
+            if (t === 'Used' && spans[i-1]) used = parseFloat(spans[i-1].innerText);
+            if (t === 'Current Balance' && spans[i+1]) balance = parseFloat(spans[i+1].innerText);
+            if (t && t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
+          }
+
+          const totalMatch = plan && plan.match(/(\d+)GB/);
+          const total = totalMatch ? parseFloat(totalMatch[1]) : (remaining && used ? remaining + used : 0);
+
+          if (!remaining && remaining !== 0) throw new Error('No data found');
+          return { remaining, used, total, balance, plan };
+        });
+      },
+      async () => {
+        await sleep(4000);
+        return await page.evaluate(() => {
+          const getText = (selector) => document.querySelector(selector)?.innerText?.trim();
+          const remaining = parseFloat(getText('[class*="remaining"]')) || 0;
+          const used = parseFloat(getText('[class*="used"]')) || 0;
+          const balance = parseFloat(getText('[class*="balance"]')) || 0;
+          if (!remaining && remaining !== 0) throw new Error('No data found');
+          return { remaining, used, total: remaining + used, balance, plan: 'Unknown' };
+        });
+      },
+      async () => {
+        await sleep(3000);
+        const content = await page.content();
+        const remainingMatch = content.match(/Remaining[^\d]*([\d.]+)/i);
+        const usedMatch = content.match(/Used[^\d]*([\d.]+)/i);
+        const balanceMatch = content.match(/Balance[^\d]*([\d.]+)/i);
+        
+        if (!remainingMatch) throw new Error('No data found');
+        
+        const remaining = parseFloat(remainingMatch[1]);
+        const used = parseFloat(usedMatch?.[1] || 0);
+        const balance = parseFloat(balanceMatch?.[1] || 0);
+        
+        return { remaining, used, total: remaining + used, balance, plan: 'Unknown' };
       }
-
-      const totalMatch = plan && plan.match(/(\d+)GB/);
-      const total = totalMatch ? parseFloat(totalMatch[1]) : (remaining && used ? remaining + used : 0);
-
-      return { remaining, used, total, balance, plan };
-    });
+    ], 'Data extraction');
     
     console.log('  Data:', data.remaining, 'GB /', data.used, 'GB /', data.balance, 'EGP');
-    
-    if (!data.remaining && data.remaining !== 0) {
-      throw new Error('No data extracted');
-    }
     
     const quotaData = {
       '104': {
@@ -139,38 +277,93 @@ async function harvestQuota() {
       lastUpdate: new Date().toISOString()
     };
     
+    // STEP 7: Push to Firestore with 3 fallback methods
     console.log('7️⃣ Firestore...');
-    
-    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}`;
-    
-    const firestoreResponse = await fetch(firestoreUrl, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fields: {
-          '104': {
-            mapValue: {
-              fields: {
-                remaining: { stringValue: quotaData['104'].remaining },
-                used: { stringValue: quotaData['104'].used },
-                total: { stringValue: quotaData['104'].total },
-                balance: { stringValue: quotaData['104'].balance },
-                planName: { stringValue: quotaData['104'].planName },
-                updatedAt: { stringValue: quotaData['104'].updatedAt },
-                updatedBy: { stringValue: quotaData['104'].updatedBy },
-                status: { stringValue: quotaData['104'].status }
+    await tryMultipleMethods([
+      async () => {
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}`;
+        const response = await fetch(firestoreUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              '104': {
+                mapValue: {
+                  fields: {
+                    remaining: { stringValue: quotaData['104'].remaining },
+                    used: { stringValue: quotaData['104'].used },
+                    total: { stringValue: quotaData['104'].total },
+                    balance: { stringValue: quotaData['104'].balance },
+                    planName: { stringValue: quotaData['104'].planName },
+                    updatedAt: { stringValue: quotaData['104'].updatedAt },
+                    updatedBy: { stringValue: quotaData['104'].updatedBy },
+                    status: { stringValue: quotaData['104'].status }
+                  }
+                }
+              },
+              lastUpdate: { stringValue: quotaData.lastUpdate }
+            }
+          })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      },
+      async () => {
+        await sleep(2000);
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}`;
+        const response = await fetch(firestoreUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              '104': {
+                mapValue: {
+                  fields: {
+                    remaining: { stringValue: quotaData['104'].remaining },
+                    used: { stringValue: quotaData['104'].used },
+                    total: { stringValue: quotaData['104'].total },
+                    balance: { stringValue: quotaData['104'].balance },
+                    planName: { stringValue: quotaData['104'].planName },
+                    updatedAt: { stringValue: quotaData['104'].updatedAt },
+                    updatedBy: { stringValue: quotaData['104'].updatedBy },
+                    status: { stringValue: quotaData['104'].status }
+                  }
+                }
+              },
+              lastUpdate: { stringValue: quotaData.lastUpdate }
+            }
+          }),
+          timeout: 10000
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      },
+      async () => {
+        await sleep(3000);
+        const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?updateMask.fieldPaths=104&key=${FIREBASE_API_KEY}`;
+        const response = await fetch(firestoreUrl, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              '104': {
+                mapValue: {
+                  fields: {
+                    remaining: { stringValue: quotaData['104'].remaining },
+                    used: { stringValue: quotaData['104'].used },
+                    total: { stringValue: quotaData['104'].total },
+                    balance: { stringValue: quotaData['104'].balance },
+                    planName: { stringValue: quotaData['104'].planName },
+                    updatedAt: { stringValue: quotaData['104'].updatedAt },
+                    updatedBy: { stringValue: quotaData['104'].updatedBy },
+                    status: { stringValue: quotaData['104'].status }
+                  }
+                }
               }
             }
-          },
-          lastUpdate: { stringValue: quotaData.lastUpdate }
-        }
-      })
-    });
-    
-    if (!firestoreResponse.ok) {
-      const errorText = await firestoreResponse.text();
-      throw new Error(`Firestore failed: ${firestoreResponse.status}`);
-    }
+          })
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      }
+    ], 'Firestore upload');
     
     console.log('✅ SUCCESS');
     
