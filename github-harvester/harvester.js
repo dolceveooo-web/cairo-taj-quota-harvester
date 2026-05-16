@@ -66,8 +66,14 @@ async function harvestQuota() {
     await sleep(8000);
     console.log('  ✓ Waited 8 seconds for dynamic content');
     
-    const url1 = await page.url().catch(() => 'unknown');
-    const title1 = await page.title().catch(() => 'unknown');
+    let url1, title1;
+    try {
+      url1 = page.url();
+      title1 = await page.title();
+    } catch (e) {
+      url1 = 'unknown';
+      title1 = 'unknown';
+    }
     console.log('  URL:', url1);
     console.log('  Title:', title1);
     
@@ -308,7 +314,12 @@ async function harvestQuota() {
     console.log('  Waiting for navigation...');
     await sleep(12000);
     
-    const url2 = await page.url().catch(() => 'unknown');
+    let url2;
+    try {
+      url2 = page.url();
+    } catch (e) {
+      url2 = 'unknown';
+    }
     console.log('  New URL:', url2);
     
     if (url2.includes('#/login')) {
