@@ -40,42 +40,39 @@ async function harvestQuota() {
     await sleep(randomDelay(4000, 6000));
     
     console.log('2️⃣ Username...');
+    console.log('  Username length:', WE_USERNAME ? WE_USERNAME.length : 'undefined');
     await page.waitForSelector('#login_loginid_input_01', { timeout: 20000 });
-    await page.click('#login_loginid_input_01');
-    await sleep(randomDelay(300, 600));
-    for (const char of WE_USERNAME) {
-      await page.keyboard.type(char);
-      await sleep(randomDelay(80, 150));
-    }
+    await page.fill('#login_loginid_input_01', WE_USERNAME);
     await sleep(randomDelay(800, 1200));
+    const usernameValue = await page.inputValue('#login_loginid_input_01');
+    console.log('  Username filled:', usernameValue.length, 'chars');
     
     console.log('3️⃣ Service type...');
-    await page.keyboard.press('Tab');
+    await page.click('.ant-select-selector');
     await sleep(randomDelay(700, 1000));
-    await page.keyboard.type('Internet');
-    await sleep(randomDelay(500, 800));
-    await page.keyboard.press('Enter');
+    await page.click('text=Internet');
     await sleep(randomDelay(1500, 2000));
     
     console.log('4️⃣ Password...');
-    await page.keyboard.press('Tab');
-    await sleep(randomDelay(400, 700));
-    for (const char of WE_PASSWORD) {
-      await page.keyboard.type(char);
-      await sleep(randomDelay(80, 150));
-    }
+    console.log('  Password length:', WE_PASSWORD ? WE_PASSWORD.length : 'undefined');
+    await page.fill('#login_password_input_01', WE_PASSWORD);
     await sleep(randomDelay(1000, 1500));
+    const passwordValue = await page.inputValue('#login_password_input_01');
+    console.log('  Password filled:', passwordValue.length, 'chars');
     
     console.log('5️⃣ Submit...');
-    await page.keyboard.press('Enter');
+    await page.click('button[type="submit"]');
     await sleep(randomDelay(15000, 18000));
     
     const url = page.url();
     console.log('  URL:', url);
     
     if (url.includes('#/login')) {
-      const screenshot = await page.screenshot({ fullPage: false });
-      console.log('  Screenshot size:', screenshot.length, 'bytes');
+      const errorMsg = await page.evaluate(() => {
+        const errorEl = document.querySelector('.ant-form-item-explain-error, .error-message, [class*="error"]');
+        return errorEl ? errorEl.innerText : 'No error message found';
+      });
+      console.log('  Error on page:', errorMsg);
       throw new Error('Login failed');
     }
     
