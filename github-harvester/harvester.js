@@ -455,175 +455,216 @@ async function harvestQuota() {
         return !!modal || title.toLowerCase().includes('verification') || title.toLowerCase().includes('enter code');
       });
 
-      if (captchaVisible) {
-        console.log('  🔐 CAPTCHA DETECTED - attempting to solve...');
+      if (!captchaVisible) throw new Error('Still on login page - no captcha detected');
 
-        let captchaSolved = false;
+      console.log('  🔐 CAPTCHA DETECTED - attempting to solve...');
 
-        // ── CAPTCHA METHOD 1: Read src/data-uri of img, extract text via canvas ──
-        if (!captchaSolved) {
-          try {
-            console.log('  [C1] Canvas pixel analysis...');
-            const captchaText = await page.evaluate(() => {
-              const img = document.querySelector('.ant-modal img, [class*="modal"] img, [class*="captcha"] img, img');
-              if (!img) throw new Error('no img');
-              const canvas = document.createElement('canvas');
-              canvas.width = img.naturalWidth || img.width;
-              canvas.height = img.naturalHeight || img.height;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0);
-              // Read pixel data to detect dark pixels (text)
-              const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-              return { src: img.src, w: canvas.width, h: canvas.height, pixels: data.length };
-            });
-            console.log('  [C1] Captcha img src type:', captchaText.src?.substring(0, 50));
-            console.log('  [C1] Image size:', captchaText.w, 'x', captchaText.h);
-          } catch (e) {
-            console.log('  [C1] Failed:', e.message);
-          }
-        }
-
-        // ── CAPTCHA METHOD 2: Read img src directly (base64 or URL) ──
-        if (!captchaSolved) {
-          try {
-            console.log('  [C2] Reading captcha image src...');
-            const imgInfo = await page.evaluate(() => {
-              const imgs = document.querySelectorAll('img');
-              for (let img of imgs) {
-                const rect = img.getBoundingClientRect();
-                if (rect.width > 50 && rect.width < 300 && rect.height > 20) {
-                  return { src: img.src, alt: img.alt, width: rect.width, height: rect.height };
-                }
-              }
-              return null;
-            });
-            if (imgInfo) {
-              console.log('  [C2] Found captcha img:', imgInfo.width, 'x', imgInfo.height, 'alt:', imgInfo.alt);
-              // If alt text contains the answer (lazy implementations)
-              if (imgInfo.alt && imgInfo.alt.length >= 4 && imgInfo.alt.length <= 8) {
-                console.log('  [C2] Alt text may be answer:', imgInfo.alt);
-                const codeInput = await page.$('#login_input_type_01, input[placeholder*="code" i], input[placeholder*="Code"], .ant-modal input, [class*="modal"] input[type="text"]');
-                if (codeInput) {
-                  await codeInput.click();
-                  await sleep(300);
-                  await codeInput.type(imgInfo.alt, { delay: 50 });
-                  await sleep(500);
-                  await page.evaluate(() => {
-                    const btns = document.querySelectorAll('button');
-                    for (let btn of btns) {
-                      if (btn.textContent.toLowerCase().includes('ok') || btn.textContent.toLowerCase().includes('confirm')) {
-                        btn.click(); return;
-                      }
-                    }
-                  });
-                  await sleep(5000);
-                  if (!page.url().includes('login')) { captchaSolved = true; console.log('  [C2] ✓ Solved via alt text!'); }
-                }
-              }
+      // Helper: get captcha img URL from page
+      async function getCaptchaImgUrl() {
+        return await page.evaluate(() => {
+          const imgs = document.querySelectorAll('img');
+          for (let img of imgs) {
+            const rect = img.getBoundingClientRect();
+            if (rect.width > 50 && rect.width < 400 && rect.height > 20 && rect.height < 150) {
+              return img.src;
             }
-          } catch (e) {
-            console.log('  [C2] Failed:', e.message);
           }
-        }
+          return null;
+        });
+      }
 
-        // ── CAPTCHA METHOD 3: Screenshot captcha img → Tesseract OCR ──
-        if (!captchaSolved) {
-          try {
-            console.log('  [C3] Tesseract OCR...');
-            const Tesseract = require('tesseract.js');
-            const captchaImgEl = await page.$('.ant-modal img, [class*="modal"] img, [class*="captcha"] img, img');
-            if (!captchaImgEl) throw new Error('no captcha img element');
-            const imgBuffer = await captchaImgEl.screenshot();
-            const { data: { text } } = await Tesseract.recognize(imgBuffer, 'eng', {
-              tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-            });
-            const cleaned = text.replace(/[^A-Za-z0-9]/g, '').trim();
-            console.log('  [C3] OCR result:', cleaned);
-            if (cleaned.length >= 3) {
-              const codeInput = await page.$('#login_input_type_01, input[placeholder*="code" i], input[placeholder*="Code"], .ant-modal input[type="text"], [class*="modal"] input[type="text"]');
-              if (!codeInput) throw new Error('no code input');
-              await codeInput.click(); await sleep(300);
-              await codeInput.type(cleaned, { delay: 50 });
-              await sleep(500);
-              await page.evaluate(() => {
-                const btns = document.querySelectorAll('button');
-                for (let btn of btns) {
-                  if (btn.textContent.toLowerCase().includes('ok') || btn.textContent.toLowerCase().includes('confirm')) {
-                    btn.click(); return;
-                  }
-                }
-              });
-              await sleep(5000);
-              if (!page.url().includes('login')) { captchaSolved = true; console.log('  [C3] ✓ Solved via OCR!'); }
-            }
-          } catch (e) {
-            console.log('  [C3] Failed:', e.message);
-          }
-        }
-
-        // ── CAPTCHA METHOD 4: Refresh captcha and retry OCR ──
-        if (!captchaSolved) {
-          try {
-            console.log('  [C4] Refresh captcha + retry OCR...');
-            // Click refresh button
-            await page.evaluate(() => {
-              const btns = document.querySelectorAll('button, img, span, i');
-              for (let btn of btns) {
-                const cls = btn.className?.toLowerCase() || '';
-                if (cls.includes('refresh') || cls.includes('reload') || cls.includes('sync')) {
-                  btn.click(); return;
-                }
-              }
-            });
-            await sleep(2000);
-            const Tesseract = require('tesseract.js');
-            const captchaImgEl = await page.$('.ant-modal img, [class*="modal"] img, img');
-            if (!captchaImgEl) throw new Error('no img after refresh');
-            const imgBuffer = await captchaImgEl.screenshot();
-            const { data: { text } } = await Tesseract.recognize(imgBuffer, 'eng', {
-              tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-            });
-            const cleaned = text.replace(/[^A-Za-z0-9]/g, '').trim();
-            console.log('  [C4] OCR after refresh:', cleaned);
-            if (cleaned.length >= 3) {
-              const codeInput = await page.$('#login_input_type_01, input[placeholder*="code" i], .ant-modal input[type="text"], [class*="modal"] input[type="text"]');
-              if (!codeInput) throw new Error('no code input');
-              await codeInput.click(); await sleep(300);
-              await codeInput.type(cleaned, { delay: 50 });
-              await sleep(500);
-              await page.evaluate(() => {
-                const btns = document.querySelectorAll('button');
-                for (let btn of btns) {
-                  if (btn.textContent.toLowerCase().includes('ok') || btn.textContent.toLowerCase().includes('confirm')) {
-                    btn.click(); return;
-                  }
-                }
-              });
-              await sleep(5000);
-              if (!page.url().includes('login')) { captchaSolved = true; console.log('  [C4] ✓ Solved after refresh!'); }
-            }
-          } catch (e) {
-            console.log('  [C4] Failed:', e.message);
-          }
-        }
-
-        // ── CAPTCHA METHOD 5: Cancel captcha and retry whole login ──
-        if (!captchaSolved) {
-          console.log('  [C5] Cancelling captcha - will retry whole attempt...');
-          await page.evaluate(() => {
-            const btns = document.querySelectorAll('button');
-            for (let btn of btns) {
-              if (btn.textContent.toLowerCase().includes('cancel')) { btn.click(); return; }
-            }
+      // Helper: fetch img as buffer using page context (bypasses CORS)
+      async function fetchCaptchaBuffer(imgUrl) {
+        const base64 = await page.evaluate(async (url) => {
+          const res = await fetch(url, { credentials: 'include' });
+          const blob = await res.blob();
+          return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result.split(',')[1]);
+            reader.readAsDataURL(blob);
           });
-          await sleep(2000);
-          throw new Error('Captcha could not be solved - retrying');
+        }, imgUrl);
+        return Buffer.from(base64, 'base64');
+      }
+
+      // Helper: preprocess image for better OCR - high contrast, scale up 3x
+      async function preprocessForOCR(imgBuffer) {
+        const Jimp = require('jimp');
+        const img = await Jimp.read(imgBuffer);
+        img
+          .resize(img.getWidth() * 3, img.getHeight() * 3, Jimp.RESIZE_NEAREST_NEIGHBOR)
+          .greyscale()
+          .contrast(1)       // max contrast
+          .normalize()
+          .invert()           // dark bg → light bg for OCR
+          .invert();          // back to normal (normalize first)
+        return await img.getBufferAsync(Jimp.MIME_PNG);
+      }
+
+      // Helper: run OCR with best settings for 5-char mixed case captcha
+      async function runOCR(imgBuffer) {
+        const Tesseract = require('tesseract.js');
+        const { data: { text } } = await Tesseract.recognize(imgBuffer, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
+          tessedit_pageseg_mode: '8',   // single word
+          tessedit_ocr_engine_mode: '1' // LSTM only - better for mixed case
+        });
+        return text.replace(/[^A-Za-z]/g, '').trim();
+      }
+
+      // Helper: type answer and click OK
+      async function submitCaptchaAnswer(answer) {
+        console.log('  Submitting answer:', answer);
+        const codeInput = await page.$('#login_input_type_01, input[placeholder*="ode"], .ant-modal input[type="text"], [class*="modal"] input[type="text"], input[type="search"]');
+        if (!codeInput) throw new Error('no code input found');
+        await codeInput.click();
+        await sleep(200);
+        // Clear existing value first
+        await page.evaluate(() => {
+          const inp = document.querySelector('#login_input_type_01, input[placeholder*="ode"], .ant-modal input[type="text"], [class*="modal"] input[type="text"], input[type="search"]');
+          if (inp) inp.value = '';
+        });
+        await codeInput.type(answer, { delay: 80 });
+        await sleep(500);
+        await page.evaluate(() => {
+          const btns = document.querySelectorAll('button');
+          for (let btn of btns) {
+            const t = btn.textContent.toLowerCase();
+            if (t.includes('ok') || t === 'ok') { btn.click(); return; }
+          }
+          // fallback: last button
+          const allBtns = document.querySelectorAll('button');
+          if (allBtns.length) allBtns[allBtns.length - 1].click();
+        });
+        await sleep(5000);
+        return !page.url().includes('login');
+      }
+
+      // Helper: click refresh button on captcha
+      async function refreshCaptcha() {
+        await page.evaluate(() => {
+          const els = document.querySelectorAll('button, span, i, svg, img');
+          for (let el of els) {
+            const cls = (el.className || '').toString().toLowerCase();
+            const title = (el.title || '').toLowerCase();
+            if (cls.includes('refresh') || cls.includes('reload') || cls.includes('sync') ||
+                cls.includes('anticon-sync') || title.includes('refresh')) {
+              el.click(); return;
+            }
+          }
+          // fallback: click second img (usually the refresh icon)
+          const imgs = document.querySelectorAll('.ant-modal img, [class*="modal"] img');
+          if (imgs.length > 1) imgs[1].click();
+        });
+        await sleep(2000);
+      }
+
+      let captchaSolved = false;
+
+      // ── C1: Fetch image directly + preprocess + OCR (BEST METHOD) ──
+      if (!captchaSolved) {
+        try {
+          console.log('  [C1] Fetch + preprocess + OCR...');
+          const imgUrl = await getCaptchaImgUrl();
+          if (!imgUrl) throw new Error('no img url');
+          console.log('  [C1] img url:', imgUrl.substring(0, 60));
+          const rawBuffer = await fetchCaptchaBuffer(imgUrl);
+          console.log('  [C1] raw buffer size:', rawBuffer.length);
+          const processedBuffer = await preprocessForOCR(rawBuffer);
+          const text = await runOCR(processedBuffer);
+          console.log('  [C1] OCR result:', text, '(len:', text.length, ')');
+          if (text.length >= 4 && text.length <= 7) {
+            captchaSolved = await submitCaptchaAnswer(text);
+            if (captchaSolved) console.log('  [C1] ✓ SOLVED!');
+          } else {
+            console.log('  [C1] OCR length wrong, skipping');
+          }
+        } catch (e) { console.log('  [C1] Failed:', e.message); }
+      }
+
+      // ── C2: Screenshot element + preprocess + OCR ──
+      if (!captchaSolved) {
+        try {
+          console.log('  [C2] Screenshot element + preprocess + OCR...');
+          const captchaImgEl = await page.$('.ant-modal img, [class*="modal"] img, [class*="captcha"] img');
+          if (!captchaImgEl) throw new Error('no img element');
+          const rawBuffer = await captchaImgEl.screenshot();
+          const processedBuffer = await preprocessForOCR(rawBuffer);
+          const text = await runOCR(processedBuffer);
+          console.log('  [C2] OCR result:', text, '(len:', text.length, ')');
+          if (text.length >= 4 && text.length <= 7) {
+            captchaSolved = await submitCaptchaAnswer(text);
+            if (captchaSolved) console.log('  [C2] ✓ SOLVED!');
+          }
+        } catch (e) { console.log('  [C2] Failed:', e.message); }
+      }
+
+      // ── C3: Refresh captcha + fetch + preprocess + OCR ──
+      if (!captchaSolved) {
+        try {
+          console.log('  [C3] Refresh + fetch + preprocess + OCR...');
+          await refreshCaptcha();
+          const imgUrl = await getCaptchaImgUrl();
+          if (!imgUrl) throw new Error('no img url after refresh');
+          const rawBuffer = await fetchCaptchaBuffer(imgUrl);
+          const processedBuffer = await preprocessForOCR(rawBuffer);
+          const text = await runOCR(processedBuffer);
+          console.log('  [C3] OCR result:', text, '(len:', text.length, ')');
+          if (text.length >= 4 && text.length <= 7) {
+            captchaSolved = await submitCaptchaAnswer(text);
+            if (captchaSolved) console.log('  [C3] ✓ SOLVED!');
+          }
+        } catch (e) { console.log('  [C3] Failed:', e.message); }
+      }
+
+      // ── C4: Raw screenshot OCR without preprocessing ──
+      if (!captchaSolved) {
+        try {
+          console.log('  [C4] Raw screenshot OCR (no preprocessing)...');
+          await refreshCaptcha();
+          const captchaImgEl = await page.$('.ant-modal img, [class*="modal"] img, img');
+          if (!captchaImgEl) throw new Error('no img element');
+          const rawBuffer = await captchaImgEl.screenshot();
+          const text = await runOCR(rawBuffer);
+          console.log('  [C4] OCR result:', text, '(len:', text.length, ')');
+          if (text.length >= 3) {
+            captchaSolved = await submitCaptchaAnswer(text);
+            if (captchaSolved) console.log('  [C4] ✓ SOLVED!');
+          }
+        } catch (e) { console.log('  [C4] Failed:', e.message); }
+      }
+
+      // ── C5: Multiple refreshes + OCR attempts ──
+      if (!captchaSolved) {
+        console.log('  [C5] Multiple refresh attempts...');
+        for (let attempt = 0; attempt < 3 && !captchaSolved; attempt++) {
+          try {
+            await refreshCaptcha();
+            const imgUrl = await getCaptchaImgUrl();
+            if (!imgUrl) continue;
+            const rawBuffer = await fetchCaptchaBuffer(imgUrl);
+            const processedBuffer = await preprocessForOCR(rawBuffer);
+            const text = await runOCR(processedBuffer);
+            console.log(`  [C5] attempt ${attempt+1} OCR:`, text);
+            if (text.length >= 4 && text.length <= 7) {
+              captchaSolved = await submitCaptchaAnswer(text);
+              if (captchaSolved) console.log('  [C5] ✓ SOLVED!');
+            }
+          } catch (e) { console.log(`  [C5] attempt ${attempt+1} failed:`, e.message); }
         }
+      }
 
-        if (!captchaSolved) throw new Error('Still on login page after captcha attempts');
-
-      } else {
-        throw new Error('Still on login page - no captcha detected');
+      // ── C6: Cancel + throw to retry whole login ──
+      if (!captchaSolved) {
+        console.log('  [C6] All OCR methods failed - cancelling and retrying...');
+        await page.evaluate(() => {
+          const btns = document.querySelectorAll('button');
+          for (let btn of btns) {
+            if (btn.textContent.toLowerCase().includes('cancel')) { btn.click(); return; }
+          }
+        });
+        await sleep(2000);
+        throw new Error('Captcha unsolvable - retrying whole login');
       }
     }
 
