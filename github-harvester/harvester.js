@@ -66,34 +66,47 @@ async function harvestQuota() {
     await sleep(8000);
     console.log('  ✓ Waited 8 seconds for dynamic content');
     
+    console.log('  Getting URL...');
     let url1, title1;
     try {
       url1 = page.url();
-      title1 = await page.title();
+      console.log('  ✓ Got URL:', url1);
     } catch (e) {
+      console.log('  ⚠ URL error:', e.message);
       url1 = 'unknown';
+    }
+    
+    console.log('  Getting title...');
+    try {
+      title1 = await page.title();
+      console.log('  ✓ Got title:', title1);
+    } catch (e) {
+      console.log('  ⚠ Title error:', e.message);
       title1 = 'unknown';
     }
-    console.log('  URL:', url1);
-    console.log('  Title:', title1);
     
     // Wait for ANY form element to appear
     console.log('  Waiting for login form elements...');
+    const formWaitStart = Date.now();
     try {
-      await page.waitForFunction(
-        () => {
-          return document.querySelector('#login_loginid_input_01') || 
-                 document.querySelector('input[type="text"]') ||
-                 document.querySelector('.ant-input');
-        },
-        { timeout: 30000 }
-      );
-      console.log('  ✓ Form elements detected');
+      await Promise.race([
+        page.waitForFunction(
+          () => {
+            return document.querySelector('#login_loginid_input_01') || 
+                   document.querySelector('input[type="text"]') ||
+                   document.querySelector('.ant-input');
+          },
+          { timeout: 30000 }
+        ),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Form wait timeout')), 30000))
+      ]);
+      const formWaitTime = ((Date.now() - formWaitStart) / 1000).toFixed(1);
+      console.log(`  ✓ Form elements detected (${formWaitTime}s)`);
     } catch (e) {
-      console.log('  ⚠ Form wait timeout, checking if elements exist anyway...');
+      console.log('  ⚠ Form wait timeout after 30s, checking manually...');
       const formExists = await page.$('#login_loginid_input_01');
       if (!formExists) {
-        console.log('  ❌ No form found, taking screenshot...');
+        console.log('  ❌ No form found, capturing diagnostics...');
         const screenshot = await page.screenshot({ encoding: 'base64' });
         console.log('  Screenshot length:', screenshot.length);
         const html = await page.content();
