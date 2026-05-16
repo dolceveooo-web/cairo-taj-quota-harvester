@@ -13,16 +13,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
+      - name: Setup Chrome
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+      
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
       
-      - name: Cache Puppeteer
+      - name: Cache npm
         uses: actions/cache@v4
         with:
-          path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('github-harvester/package.json') }}
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('github-harvester/package.json') }}
       
       - name: Install dependencies
         run: |
