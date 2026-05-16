@@ -46,19 +46,42 @@ async function harvestQuota() {
     await new Promise(r => setTimeout(r, 800));
     
     console.log('3️⃣ Selecting service type (Internet)...');
-    const dropdown = await page.$('.ant-select-selector, .ant-select');
-    if (!dropdown) throw new Error('Service Type dropdown not found');
-    await dropdown.click();
-    await new Promise(r => setTimeout(r, 800));
+    
+    // Try multiple dropdown selectors
+    let dropdown = await page.$('.ant-select-selector');
+    if (!dropdown) dropdown = await page.$('.ant-select');
+    if (!dropdown) dropdown = await page.$('[class*="select"]');
+    
+    if (dropdown) {
+      console.log('  Found dropdown, clicking...');
+      await dropdown.click();
+      await new Promise(r => setTimeout(r, 1000));
+    } else {
+      console.log('  Dropdown not found, trying direct evaluation...');
+      await page.evaluate(() => {
+        const selects = document.querySelectorAll('[class*="select"], select, .ant-select');
+        if (selects[0]) selects[0].click();
+      });
+      await new Promise(r => setTimeout(r, 1000));
+    }
     
     const clicked = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
-      const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
-      if (internet) { internet.click(); return internet.textContent.trim(); }
+      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [class*="option"]'));
+      console.log('Found ' + items.length + ' dropdown items');
+      const internet = items.find(i => i.textContent && i.textContent.toLowerCase().includes('internet'));
+      if (internet) { 
+        internet.click(); 
+        return internet.textContent.trim(); 
+      }
+      // Fallback: click first item that looks like an option
+      if (items.length > 0) {
+        items[0].click();
+        return items[0].textContent.trim();
+      }
       return null;
     });
-    console.log('  Selected: ' + (clicked || 'NOT FOUND'));
-    await new Promise(r => setTimeout(r, 500));
+    console.log('  Selected: ' + (clicked || 'FAILED'));
+    await new Promise(r => setTimeout(r, 1000));
     
     console.log('4️⃣ Filling password...');
     await page.focus('#login_password_input_01');
