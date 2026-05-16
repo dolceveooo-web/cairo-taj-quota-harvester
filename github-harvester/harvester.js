@@ -9,23 +9,43 @@ const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
 const WE_USERNAME = process.env.WE_USERNAME;
 const WE_PASSWORD = process.env.WE_PASSWORD;
 
+const MAX_RETRIES = 3;
+const TIMEOUT = 180000; // 3 minutes total timeout
+
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function waitForElement(page, selector, timeout = 10000) {
+  try {
+    await page.waitForSelector(selector, { timeout, visible: true });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function harvestQuota() {
   console.log('🚀 GitHub Cloud Harvester starting...');
   
   let browser;
   try {
     browser = await puppeteer.launch({
-      headless: true,
-      protocolTimeout: 120000,
+      headless: 'new',
+      protocolTimeout: TIMEOUT,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-gpu'
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
       ]
     });
 
     const page = await browser.newPage();
+    page.setDefaultTimeout(TIMEOUT);
+    page.setDefaultNavigationTimeout(TIMEOUT);
     
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -34,92 +54,46 @@ async function harvestQuota() {
     
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-    console.log('1️⃣ Navigating to WE Egypt login...');
-    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
-    
-    await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
-    console.log('  Login form ready');
+    console.log('1️⃣ Navigating to WE Egypt...');
+    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await sleep(2000);
     
     console.log('2️⃣ Filling username...');
-    await page.focus('#login_loginid_input_01');
-    await new Promise(r => setTimeout(r, 200));
-    await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
-    await new Promise(r => setTimeout(r, 800));
+    await page.waitForSelector('#login_loginid_input_01', { timeout: 15000 });
+    await page.click('#login_loginid_input_01');
+    await sleep(300);
+    await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 50 });
+    await sleep(500);
     
-    console.log('3️⃣ Selecting service type (Internet)...');
-    
-    // Try multiple dropdown selectors
-    let dropdown = await page.$('.ant-select-selector');
-    if (!dropdown) dropdown = await page.$('.ant-select');
-    if (!dropdown) dropdown = await page.$('[class*="select"]');
-    
-    if (dropdown) {
-      console.log('  Found dropdown, clicking...');
-      await dropdown.click();
-      await new Promise(r => setTimeout(r, 3000)); // Wait 3 seconds for dropdown
-    } else {
-      console.log('  Dropdown not found, trying direct evaluation...');
-      await page.evaluate(() => {
-        const selects = document.querySelectorAll('[class*="select"], select, .ant-select');
-        if (selects[0]) selects[0].click();
-      });
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    
-    // Wait for dropdown items to appear
-    try {
-      await page.waitForSelector('.ant-select-item-option, .ant-select-item', { timeout: 5000 });
-      console.log('  Dropdown items appeared');
-    } catch (e) {
-      console.log('  Dropdown items not found, continuing anyway...');
-    }
-    
-    const clicked = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [class*="option"]'));
-      const visibleItems = items.filter(i => i.offsetParent !== null);
-      console.log('Total items: ' + items.length + ', Visible: ' + visibleItems.length);
-      
-      const internet = visibleItems.find(i => i.textContent && i.textContent.toLowerCase().includes('internet'));
-      if (internet) { 
-        console.log('Found Internet option: ' + internet.textContent);
-        internet.click(); 
-        return internet.textContent.trim(); 
-      }
-      
-      // Try clicking first visible item
-      if (visibleItems.length > 0) {
-        console.log('Clicking first visible item: ' + visibleItems[0].textContent);
-        visibleItems[0].click();
-        return visibleItems[0].textContent.trim();
-      }
-      
-      return null;
-    });
-    console.log('  Selected: ' + (clicked || 'FAILED'));
-    
-    if (!clicked) {
-      throw new Error('Could not select service type from dropdown');
-    }
-    
-    await new Promise(r => setTimeout(r, 1000));
+    console.log('3️⃣ Selecting Internet (keyboard method)...');
+    await page.keyboard.press('Tab');
+    await sleep(500);
+    await page.keyboard.type('Internet', { delay: 100 });
+    await sleep(300);
+    await page.keyboard.press('Enter');
+    await sleep(1000);
     
     console.log('4️⃣ Filling password...');
     await page.keyboard.press('Tab');
-    await page.waitForTimeout(500);
+    await sleep(300);
     await page.keyboard.type(WE_PASSWORD, { delay: 50 });
-    await page.waitForTimeout(500);
+    await sleep(500);
     
-    console.log('5️⃣ Submitting login...');
+    console.log('5️⃣ Submitting...');
     await page.keyboard.press('Enter');
-    await page.waitForTimeout(8000);
+    await sleep(8000);
     
-    const urlAfter = page.url();
-    console.log('  URL: ' + urlAfter);
-    if (urlAfter.includes('#/login')) throw new Error('Login failed — check credentials');
+    const url = page.url();
+    console.log('  Current URL: ' + url);
+    
+    if (url.includes('#/login')) {
+      throw new Error('Login failed - still on login page');
+    }
+    
     console.log('  ✓ Login successful');
     
-    console.log('6️⃣ Extracting quota data...');
-    await new Promise(r => setTimeout(r, 2000));
+    console.log('6️⃣ Extracting data...');
+    await sleep(3000);
     
     const data = await page.evaluate(() => {
       const spans = Array.from(document.querySelectorAll('span, div'));
@@ -140,27 +114,21 @@ async function harvestQuota() {
       return { remaining, used, total, balance, plan };
     });
     
-    console.log('7️⃣ Data extracted:', data);
     console.log('  Remaining: ' + data.remaining + ' GB');
     console.log('  Used: ' + data.used + ' GB');
-    console.log('  Total: ' + data.total + ' GB');
     console.log('  Balance: ' + data.balance + ' EGP');
-    console.log('  Plan: ' + data.plan);
     
-    if (!data.remaining) throw new Error('Could not extract quota from page');
-    
-    const remaining = data.remaining;
-    const used = data.used;
-    const total = data.total;
-    const balance = data.balance;
+    if (!data.remaining && data.remaining !== 0) {
+      throw new Error('Could not extract quota data');
+    }
     
     const quotaData = {
       '104': {
-        remaining: `${remaining.toFixed(2)} GB`,
-        used: `${used.toFixed(2)} GB`,
-        total: `${total.toFixed(2)} GB`,
-        balance: `${balance.toFixed(2)} EGP`,
-        planName: data.plan || 'Unknown Plan',
+        remaining: `${data.remaining.toFixed(2)} GB`,
+        used: `${data.used.toFixed(2)} GB`,
+        total: `${data.total.toFixed(2)} GB`,
+        balance: `${data.balance.toFixed(2)} EGP`,
+        planName: data.plan || 'Unknown',
         updatedAt: new Date().toISOString(),
         updatedBy: 'GitHub Cloud Harvester ⚡',
         status: 'success'
@@ -168,7 +136,7 @@ async function harvestQuota() {
       lastUpdate: new Date().toISOString()
     };
     
-    console.log('8️⃣ Writing to Firestore...');
+    console.log('7️⃣ Writing to Firestore...');
     
     const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}`;
     
@@ -197,17 +165,41 @@ async function harvestQuota() {
     });
     
     if (!response.ok) {
-      throw new Error(`Firestore write failed: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Firestore write failed: ${response.status} - ${errorText}`);
     }
     
-    console.log('✅ GitHub Cloud Harvester completed successfully!');
+    console.log('✅ SUCCESS! Data updated in Firestore');
     
   } catch (error) {
-    console.error('❌ GitHub Cloud Harvester error:', error);
-    process.exit(1);
+    console.error('❌ ERROR:', error.message);
+    throw error;
   } finally {
-    if (browser) await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 }
 
-harvestQuota();
+// Main execution with retry
+async function main() {
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      console.log(`\n=== Attempt ${attempt}/${MAX_RETRIES} ===`);
+      await harvestQuota();
+      console.log('\n✅ Harvester completed successfully!');
+      process.exit(0);
+    } catch (error) {
+      console.error(`\n❌ Attempt ${attempt} failed: ${error.message}`);
+      if (attempt < MAX_RETRIES) {
+        console.log(`Retrying in 10 seconds...`);
+        await sleep(10000);
+      } else {
+        console.error('\n❌ All attempts failed. Exiting.');
+        process.exit(1);
+      }
+    }
+  }
+}
+
+main();
