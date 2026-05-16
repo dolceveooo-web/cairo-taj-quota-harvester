@@ -18,16 +18,16 @@ jobs:
         with:
           node-version: '18'
       
-      - name: Cache Puppeteer
+      - name: Cache Playwright
         uses: actions/cache@v4
         with:
-          path: ~/.cache/puppeteer
-          key: puppeteer-${{ runner.os }}-${{ hashFiles('github-harvester/package-lock.json') }}
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('github-harvester/package.json') }}
       
       - name: Install dependencies
         run: |
           cd github-harvester
-          npm ci --prefer-offline --no-audit --legacy-peer-deps
+          npm install --prefer-offline --no-audit
       
       - name: Run harvester
         env:
