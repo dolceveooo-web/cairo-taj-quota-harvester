@@ -152,7 +152,7 @@ async function harvestQuota() {
     
     const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}`;
     
-    const response = await fetch(firestoreUrl, {
+    const firestoreResponse = await fetch(firestoreUrl, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -176,9 +176,9 @@ async function harvestQuota() {
       })
     });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Firestore failed: ${response.status}`);
+    if (!firestoreResponse.ok) {
+      const errorText = await firestoreResponse.text();
+      throw new Error(`Firestore failed: ${firestoreResponse.status}`);
     }
     
     console.log('✅ SUCCESS');
