@@ -459,123 +459,135 @@ async function harvestQuota() {
 
       console.log('  🔐 CAPTCHA DETECTED - attempting to solve...');
 
-      // Helper: get captcha img URL from page - SKIP logos/icons
-      async function getCaptchaImgUrl() {
-        return await page.evaluate(() => {
+      // ── Helper: Find captcha image element precisely ──
+      // WE captcha: ~200x58px, NOT a logo/icon/banner, has noisy background
+      async function getCaptchaImgElement() {
+        return await page.evaluateHandle(() => {
           const imgs = document.querySelectorAll('img');
-          for (let img of imgs) {
-            const src = img.src || '';
-            // Skip logos and icons
-            if (src.includes('logo') || src.includes('icon') || src.includes('banner')) continue;
-            const rect = img.getBoundingClientRect();
-            // Captcha is ~200x58px - target that size range
-            if (rect.width > 80 && rect.width < 350 && rect.height > 20 && rect.height < 120) {
-              return src;
-            }
+          // Pass 1: size-based match (captcha is ~120-300w, 30-100h)
+          for (const img of imgs) {
+            const src = (img.src || '').toLowerCase();
+            if (src.includes('logo') || src.includes('icon') || src.includes('banner') || src.includes('sprite')) continue;
+            const r = img.getBoundingClientRect();
+            if (r.width > 80 && r.width < 350 && r.height > 25 && r.height < 120) return img;
           }
-          // Fallback: any img with fileID or captcha in URL
-          for (let img of imgs) {
-            const src = img.src || '';
-            if (src.includes('fileID') || src.includes('captcha') || src.includes('code') || src.includes('verify')) {
-              return src;
-            }
+          // Pass 2: URL keyword match
+          for (const img of imgs) {
+            const src = (img.src || '').toLowerCase();
+            if (src.includes('captcha') || src.includes('verify') || src.includes('code') || src.includes('fileid')) return img;
           }
+          // Pass 3: img inside modal
+          const modalImg = document.querySelector('.ant-modal img, [class*="modal"] img');
+          if (modalImg) return modalImg;
           return null;
         });
       }
 
-      // Helper: get captcha img ElementHandle directly - SKIP logos/icons
-      async function getCaptchaImgElement() {
-        const handles = await page.$$('img');
-        for (let handle of handles) {
-          const info = await handle.evaluate(img => ({
-            src: img.src,
-            w: img.getBoundingClientRect().width,
-            h: img.getBoundingClientRect().height
-          }));
-          if (info.src.includes('logo') || info.src.includes('icon') || info.src.includes('banner')) continue;
-          if (info.w > 80 && info.w < 350 && info.h > 20 && info.h < 120) return handle;
-        }
-        // Fallback: any img with fileID or captcha in URL
-        for (let handle of handles) {
-          const src = await handle.evaluate(img => img.src);
-          if (src.includes('fileID') || src.includes('captcha') || src.includes('verify')) return handle;
-        }
-        return null;
+      // ── Helper: Canvas Red-Isolation preprocessing inside browser ──
+      async function canvasPreprocess(imgHandle) {
+        return await page.evaluate((imgEl) => {
+          if (!imgEl || !imgEl.naturalWidth) return null;
+          const scale = 3;
+          const c = document.createElement('canvas');
+          c.width = imgEl.naturalWidth * scale;
+          c.height = imgEl.naturalHeight * scale;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(imgEl, 0, 0, c.width, c.height);
+          const imgData = ctx.getImageData(0, 0, c.width, c.height);
+          const d = imgData.data;
+          // RED ISOLATION: keep only red-ish pixels → black, everything else → white
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i], g = d[i+1], b = d[i+2];
+            if (r > 130 && g < 120 && b < 120 && (r - g) > 40) {
+              d[i] = d[i+1] = d[i+2] = 0;
+            } else {
+              d[i] = d[i+1] = d[i+2] = 255;
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+          return c.toDataURL('image/png');
+        }, imgHandle);
       }
 
-      // Helper: fetch img as buffer using page context (bypasses CORS)
-      async function fetchCaptchaBuffer(imgUrl) {
-        const base64 = await page.evaluate(async (url) => {
-          const res = await fetch(url, { credentials: 'include' });
-          const blob = await res.blob();
-          return new Promise(resolve => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result.split(',')[1]);
-            reader.readAsDataURL(blob);
-          });
-        }, imgUrl);
-        return Buffer.from(base64, 'base64');
+      // ── Helper: Canvas Aggressive threshold (fallback) ──
+      async function canvasAggressivePreprocess(imgHandle) {
+        return await page.evaluate((imgEl) => {
+          if (!imgEl || !imgEl.naturalWidth) return null;
+          const scale = 4;
+          const c = document.createElement('canvas');
+          c.width = imgEl.naturalWidth * scale;
+          c.height = imgEl.naturalHeight * scale;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
+          ctx.drawImage(imgEl, 0, 0, c.width, c.height);
+          const imgData = ctx.getImageData(0, 0, c.width, c.height);
+          const d = imgData.data;
+          for (let i = 0; i < d.length; i += 4) {
+            const r = d[i], g = d[i+1], b = d[i+2];
+            const lum = 0.299*r + 0.587*g + 0.114*b;
+            const maxC = Math.max(r,g,b), minC = Math.min(r,g,b);
+            const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+            if (lum < 140 || (sat > 0.4 && lum < 200)) {
+              d[i] = d[i+1] = d[i+2] = 0;
+            } else {
+              d[i] = d[i+1] = d[i+2] = 255;
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+          return c.toDataURL('image/png');
+        }, imgHandle);
       }
 
-      // Helper: preprocess image for better OCR - high contrast, scale up 3x
-      async function preprocessForOCR(imgBuffer) {
-        const Jimp = require('jimp');
-        const img = await Jimp.read(imgBuffer);
-        img
-          .resize(img.getWidth() * 3, img.getHeight() * 3, Jimp.RESIZE_NEAREST_NEIGHBOR)
-          .greyscale()
-          .contrast(1)       // max contrast
-          .normalize()
-          .invert()           // dark bg → light bg for OCR
-          .invert();          // back to normal (normalize first)
-        return await img.getBufferAsync(Jimp.MIME_PNG);
-      }
-
-      // Helper: run OCR with best settings for 5-char mixed case captcha
-      async function runOCR(imgBuffer) {
+      // ── Helper: Run Tesseract OCR ──
+      async function runOCR(input, psmMode = '8') {
         const Tesseract = require('tesseract.js');
-        const { data: { text } } = await Tesseract.recognize(imgBuffer, 'eng', {
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz',
-          tessedit_pageseg_mode: '8',   // single word
-          tessedit_ocr_engine_mode: '1' // LSTM only - better for mixed case
+        const { data: { text } } = await Tesseract.recognize(input, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+          tessedit_pageseg_mode: psmMode,
+          tessedit_ocr_engine_mode: '1'
         });
-        return text.replace(/[^A-Za-z]/g, '').trim();
+        return text.replace(/[^A-Za-z0-9]/g, '').trim();
       }
 
-      // Helper: type answer and click OK
+      // ── Helper: Submit captcha answer ──
       async function submitCaptchaAnswer(answer) {
         console.log('  Submitting answer:', answer);
-        const codeInput = await page.$('#login_input_type_01, input[placeholder*="ode"], .ant-modal input[type="text"], [class*="modal"] input[type="text"], input[type="search"]');
-        if (!codeInput) throw new Error('no code input found');
-        await codeInput.click();
-        await sleep(200);
-        // Clear existing value first
-        await page.evaluate(() => {
-          const inp = document.querySelector('#login_input_type_01, input[placeholder*="ode"], .ant-modal input[type="text"], [class*="modal"] input[type="text"], input[type="search"]');
-          if (inp) inp.value = '';
-        });
-        await codeInput.type(answer, { delay: 80 });
+        const typed = await page.evaluate((ans) => {
+          const inp = document.querySelector('#login_input_type_01') ||
+                      document.querySelector('.ant-modal input[type="text"]') ||
+                      document.querySelector('[class*="modal"] input[type="text"]') ||
+                      document.querySelector('input[placeholder*="ode"]') ||
+                      document.querySelector('input[type="search"]');
+          if (!inp) return false;
+          inp.focus();
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          nativeSetter.call(inp, '');
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          nativeSetter.call(inp, ans);
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        }, answer);
+        if (!typed) throw new Error('no captcha input found');
         await sleep(500);
         await page.evaluate(() => {
           const btns = document.querySelectorAll('button');
-          for (let btn of btns) {
+          for (const btn of btns) {
             const t = btn.textContent.toLowerCase();
             if (t.includes('ok') || t === 'ok') { btn.click(); return; }
           }
-          // fallback: last button
-          const allBtns = document.querySelectorAll('button');
-          if (allBtns.length) allBtns[allBtns.length - 1].click();
+          if (btns.length) btns[btns.length - 1].click();
         });
         await sleep(5000);
         return !page.url().includes('login');
       }
 
-      // Helper: click refresh button on captcha
+      // ── Helper: Click refresh on captcha ──
       async function refreshCaptcha() {
         await page.evaluate(() => {
           const els = document.querySelectorAll('button, span, i, svg, img');
-          for (let el of els) {
+          for (const el of els) {
             const cls = (el.className || '').toString().toLowerCase();
             const title = (el.title || '').toLowerCase();
             if (cls.includes('refresh') || cls.includes('reload') || cls.includes('sync') ||
@@ -583,139 +595,125 @@ async function harvestQuota() {
               el.click(); return;
             }
           }
-          // fallback: click second img (usually the refresh icon)
           const imgs = document.querySelectorAll('.ant-modal img, [class*="modal"] img');
           if (imgs.length > 1) imgs[1].click();
         });
         await sleep(2000);
       }
 
+      function isValidCaptcha(text) { return text.length >= 4 && text.length <= 7; }
+
       let captchaSolved = false;
 
-      // ── C1: Fetch image directly + preprocess + OCR (BEST METHOD) ──
+      // ── C1: Canvas Red-Isolation + OCR PSM8 (BEST for WE red-text captcha) ──
       if (!captchaSolved) {
         try {
-          console.log('  [C1] Fetch + preprocess + OCR...');
-          const imgUrl = await getCaptchaImgUrl();
-          if (!imgUrl) throw new Error('no img url');
-          console.log('  [C1] img url:', imgUrl.substring(0, 80));
-          const rawBuffer = await fetchCaptchaBuffer(imgUrl);
-          console.log('  [C1] raw buffer size:', rawBuffer.length);
-          if (rawBuffer.length < 500) throw new Error('buffer too small - wrong image');
-          const processedBuffer = await preprocessForOCR(rawBuffer);
-          const text = await runOCR(processedBuffer);
-          console.log('  [C1] OCR result:', text, '(len:', text.length, ')');
-          if (text.length >= 4 && text.length <= 7) {
+          console.log('  [C1] Canvas Red-Isolation + OCR PSM8...');
+          const imgHandle = await getCaptchaImgElement();
+          const b64 = await canvasPreprocess(imgHandle);
+          if (!b64) throw new Error('canvas returned null');
+          const text = await runOCR(b64, '8');
+          console.log('  [C1] OCR:', text, '(len:', text.length, ')');
+          if (isValidCaptcha(text)) {
             captchaSolved = await submitCaptchaAnswer(text);
             if (captchaSolved) console.log('  [C1] ✓ SOLVED!');
-          } else {
-            console.log('  [C1] OCR length wrong, skipping');
           }
         } catch (e) { console.log('  [C1] Failed:', e.message); }
       }
 
-      // ── C2: Screenshot captcha element directly + preprocess + OCR ──
+      // ── C2: Canvas Red-Isolation + OCR PSM7 (single line mode) ──
       if (!captchaSolved) {
         try {
-          console.log('  [C2] Screenshot captcha element + preprocess + OCR...');
-          const captchaImgHandle = await getCaptchaImgElement();
-          if (!captchaImgHandle) throw new Error('no captcha img element');
-          // Convert handle to ElementHandle for screenshot
-          const captchaImgEl = captchaImgHandle.asElement();
-          if (!captchaImgEl) throw new Error('handle is not element');
-          const rawBuffer = await captchaImgEl.screenshot();
-          console.log('  [C2] screenshot size:', rawBuffer.length);
-          if (rawBuffer.length < 500) throw new Error('screenshot too small - wrong element');
-          const processedBuffer = await preprocessForOCR(rawBuffer);
-          const text = await runOCR(processedBuffer);
-          console.log('  [C2] OCR result:', text, '(len:', text.length, ')');
-          if (text.length >= 4 && text.length <= 7) {
+          console.log('  [C2] Canvas Red-Isolation + PSM7...');
+          const imgHandle = await getCaptchaImgElement();
+          const b64 = await canvasPreprocess(imgHandle);
+          if (!b64) throw new Error('null');
+          const text = await runOCR(b64, '7');
+          console.log('  [C2] OCR:', text, '(len:', text.length, ')');
+          if (isValidCaptcha(text)) {
             captchaSolved = await submitCaptchaAnswer(text);
             if (captchaSolved) console.log('  [C2] ✓ SOLVED!');
-            else console.log('  [C2] Answer submitted but still on login - wrong answer');
-          } else {
-            console.log('  [C2] OCR length wrong, trying raw...');
-            // Try raw without preprocessing
-            const textRaw = await runOCR(rawBuffer);
-            console.log('  [C2] Raw OCR result:', textRaw, '(len:', textRaw.length, ')');
-            if (textRaw.length >= 4 && textRaw.length <= 7) {
-              captchaSolved = await submitCaptchaAnswer(textRaw);
-              if (captchaSolved) console.log('  [C2-raw] ✓ SOLVED!');
-            }
           }
         } catch (e) { console.log('  [C2] Failed:', e.message); }
       }
 
-      // ── C3: Refresh + screenshot element + preprocess + OCR ──
+      // ── C3: Canvas Aggressive threshold + OCR ──
       if (!captchaSolved) {
         try {
-          console.log('  [C3] Refresh + screenshot + preprocess + OCR...');
-          await refreshCaptcha();
-          const captchaImgHandle = await getCaptchaImgElement();
-          if (!captchaImgHandle) throw new Error('no img after refresh');
-          const captchaImgEl = captchaImgHandle.asElement();
-          if (!captchaImgEl) throw new Error('handle not element');
-          const rawBuffer = await captchaImgEl.screenshot();
-          if (rawBuffer.length < 500) throw new Error('screenshot too small');
-          const processedBuffer = await preprocessForOCR(rawBuffer);
-          const text = await runOCR(processedBuffer);
-          console.log('  [C3] OCR result:', text, '(len:', text.length, ')');
-          if (text.length >= 4 && text.length <= 7) {
+          console.log('  [C3] Canvas Aggressive threshold + OCR...');
+          const imgHandle = await getCaptchaImgElement();
+          const b64 = await canvasAggressivePreprocess(imgHandle);
+          if (!b64) throw new Error('null');
+          const text = await runOCR(b64, '8');
+          console.log('  [C3] OCR:', text, '(len:', text.length, ')');
+          if (isValidCaptcha(text)) {
             captchaSolved = await submitCaptchaAnswer(text);
             if (captchaSolved) console.log('  [C3] ✓ SOLVED!');
           }
         } catch (e) { console.log('  [C3] Failed:', e.message); }
       }
 
-      // ── C4: Raw screenshot OCR without preprocessing ──
+      // ── C4: Refresh + Canvas Red-Isolation + OCR (fresh captcha) ──
       if (!captchaSolved) {
         try {
-          console.log('  [C4] Raw screenshot OCR (no preprocessing)...');
+          console.log('  [C4] Refresh + Red-Isolation + OCR...');
           await refreshCaptcha();
-          const captchaImgHandle = await getCaptchaImgElement();
-          if (!captchaImgHandle) throw new Error('no img element');
-          const captchaImgEl = captchaImgHandle.asElement();
-          if (!captchaImgEl) throw new Error('handle not element');
-          const rawBuffer = await captchaImgEl.screenshot();
-          if (rawBuffer.length < 500) throw new Error('screenshot too small');
-          const text = await runOCR(rawBuffer);
-          console.log('  [C4] OCR result:', text, '(len:', text.length, ')');
-          if (text.length >= 3) {
+          const imgHandle = await getCaptchaImgElement();
+          const b64 = await canvasPreprocess(imgHandle);
+          if (!b64) throw new Error('null');
+          const text = await runOCR(b64, '8');
+          console.log('  [C4] OCR:', text, '(len:', text.length, ')');
+          if (isValidCaptcha(text)) {
             captchaSolved = await submitCaptchaAnswer(text);
             if (captchaSolved) console.log('  [C4] ✓ SOLVED!');
           }
         } catch (e) { console.log('  [C4] Failed:', e.message); }
       }
 
-      // ── C5: Multiple refreshes + screenshot + OCR attempts ──
+      // ── C5: Screenshot element + direct OCR ──
       if (!captchaSolved) {
-        console.log('  [C5] Multiple refresh + screenshot attempts...');
+        try {
+          console.log('  [C5] Screenshot element + OCR...');
+          await refreshCaptcha();
+          const imgHandle = await getCaptchaImgElement();
+          const el = imgHandle.asElement ? imgHandle.asElement() : imgHandle;
+          if (!el) throw new Error('not element');
+          const buf = await el.screenshot();
+          if (buf.length < 500) throw new Error('too small');
+          const text = await runOCR(buf, '8');
+          console.log('  [C5] OCR:', text, '(len:', text.length, ')');
+          if (isValidCaptcha(text)) {
+            captchaSolved = await submitCaptchaAnswer(text);
+            if (captchaSolved) console.log('  [C5] ✓ SOLVED!');
+          }
+        } catch (e) { console.log('  [C5] Failed:', e.message); }
+      }
+
+      // ── C6: Multi-refresh + Red-Isolation loop (3 attempts) ──
+      if (!captchaSolved) {
+        console.log('  [C6] Multi-refresh loop (3 attempts)...');
         for (let attempt = 0; attempt < 3 && !captchaSolved; attempt++) {
           try {
             await refreshCaptcha();
-            const captchaImgHandle = await getCaptchaImgElement();
-            if (!captchaImgHandle) continue;
-            const captchaImgEl = captchaImgHandle.asElement();
-            if (!captchaImgEl) continue;
-            const rawBuffer = await captchaImgEl.screenshot();
-            if (rawBuffer.length < 500) continue;
-            const processedBuffer = await preprocessForOCR(rawBuffer);
-            const text = await runOCR(processedBuffer);
-            console.log(`  [C5] attempt ${attempt+1} OCR:`, text, '(len:', text.length, ')');
-            if (text.length >= 4 && text.length <= 7) {
+            const imgHandle = await getCaptchaImgElement();
+            const b64 = await canvasPreprocess(imgHandle);
+            if (!b64) continue;
+            const text = await runOCR(b64, '8');
+            console.log(`  [C6] attempt ${attempt+1} OCR:`, text, '(len:', text.length, ')');
+            if (isValidCaptcha(text)) {
               captchaSolved = await submitCaptchaAnswer(text);
-              if (captchaSolved) console.log('  [C5] ✓ SOLVED!');
+              if (captchaSolved) console.log('  [C6] ✓ SOLVED!');
             }
-          } catch (e) { console.log(`  [C5] attempt ${attempt+1} failed:`, e.message); }
+          } catch (e) { console.log(`  [C6] attempt ${attempt+1} failed:`, e.message); }
         }
       }
 
-      // ── C6: Cancel + throw to retry whole login ──
+      // ── C7: Cancel + throw to retry whole login ──
       if (!captchaSolved) {
-        console.log('  [C6] All OCR methods failed - cancelling and retrying...');
+        console.log('  [C7] All methods failed - cancelling...');
         await page.evaluate(() => {
           const btns = document.querySelectorAll('button');
-          for (let btn of btns) {
+          for (const btn of btns) {
             if (btn.textContent.toLowerCase().includes('cancel')) { btn.click(); return; }
           }
         });
