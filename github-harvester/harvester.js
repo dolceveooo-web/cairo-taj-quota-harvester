@@ -36,257 +36,114 @@ async function harvestQuota() {
         '--disable-features=IsolateOrigins,site-per-process',
         '--window-size=1920,1080',
         '--disable-web-security',
-        '--disable-features=VizDisplayCompositor'
+        '--disable-features=VizDisplayCompositor',
+        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       ],
-      ignoreDefaultArgs: ['--enable-automation']
+      ignoreDefaultArgs: ['--enable-automation'],
+      ignoreHTTPSErrors: true
     });
 
     page = await browser.newPage();
 
+    // MAXIMUM STEALTH
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
-      window.navigator.chrome = { runtime: {} };
       Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+      Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en', 'ar'] });
+      window.navigator.chrome = { runtime: {} };
+      
+      // Override permissions
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
     });
 
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1920, height: 1080 });
+    await page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+    });
     
     // ========== STEP 1: NAVIGATE ==========
     console.log('\n1️⃣ NAVIGATING...');
-    console.log('  Target: https://my.te.eg/echannel/');
     
     await page.goto('https://my.te.eg/echannel/', { 
       waitUntil: 'domcontentloaded', 
       timeout: 60000 
     });
-    console.log('  ✓ Page loaded (domcontentloaded)');
+    console.log('  ✓ Page loaded');
     
-    await sleep(8000);
-    console.log('  ✓ Waited 8 seconds for dynamic content');
+    await sleep(10000);
+    console.log('  ✓ Waited 10 seconds');
     
-    console.log('  Getting URL...');
-    let url1 = 'unknown';
-    try {
-      url1 = page.url();
-      console.log('  ✓ Got URL:', url1);
-    } catch (e) {
-      console.log('  ⚠ URL error:', e.message);
+    // Check if we're blocked
+    const pageContent = await page.content();
+    if (pageContent.includes('cloudflare') || pageContent.includes('challenge') || pageContent.includes('captcha')) {
+      console.log('  ❌ BLOCKED: Cloudflare/WAF detected');
+      throw new Error('Site is blocking automated access');
     }
     
-    // SKIP TITLE - IT HANGS FOR NO REASON
-    console.log('  Skipping title check (causes hangs)');
+    console.log('  ✓ No blocking detected');
+    console.log('  URL:', page.url());
     
-    // Wait for ANY form element to appear
-    console.log('  Waiting for login form elements...');
-    const formWaitStart = Date.now();
-    try {
-      await Promise.race([
-        page.waitForFunction(
-          () => {
-            return document.querySelector('#login_loginid_input_01') || 
-                   document.querySelector('input[type="text"]') ||
-                   document.querySelector('.ant-input');
-          },
-          { timeout: 30000 }
-        ),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Form wait timeout')), 30000))
-      ]);
-      const formWaitTime = ((Date.now() - formWaitStart) / 1000).toFixed(1);
-      console.log(`  ✓ Form elements detected (${formWaitTime}s)`);
-    } catch (e) {
-      console.log('  ⚠ Form wait timeout after 30s, checking manually...');
-      const formExists = await page.$('#login_loginid_input_01');
-      if (!formExists) {
-        console.log('  ❌ No form found, capturing diagnostics...');
-        const screenshot = await page.screenshot({ encoding: 'base64' });
-        console.log('  Screenshot length:', screenshot.length);
-        const html = await page.content();
-        console.log('  Page HTML length:', html.length);
-        console.log('  First 500 chars:', html.substring(0, 500));
-        throw new Error('Login form never appeared');
-      }
-      console.log('  ✓ Form exists despite timeout');
+    // ========== STEP 2: FIND AND FILL USERNAME ==========
+    console.log('\n2️⃣ USERNAME...');
+    
+    // List all inputs
+    const inputs = await page.$$('input');
+    console.log('  Found', inputs.length, 'input fields');
+    
+    if (inputs.length === 0) {
+      console.log('  ❌ NO INPUTS FOUND - Page may be blocked');
+      const html = await page.content();
+      console.log('  HTML length:', html.length);
+      console.log('  First 1000 chars:', html.substring(0, 1000));
+      throw new Error('No input fields found');
     }
     
-    await sleep(3000);
-    console.log('  ✓ Additional 3s wait');
-    
-    // ========== STEP 2: USERNAME ==========
-    console.log('\n2️⃣ FILLING USERNAME...');
-    console.log('  Looking for username field...');
-    
-    // Check what inputs exist
-    const inputsInfo = await page.evaluate(() => {
-      const inputs = Array.from(document.querySelectorAll('input'));
-      return inputs.map(inp => ({
-        id: inp.id,
-        type: inp.type,
-        name: inp.name,
-        placeholder: inp.placeholder,
-        visible: inp.offsetParent !== null
-      }));
-    });
-    console.log('  Available inputs:', JSON.stringify(inputsInfo, null, 2));
-    
-    // Try multiple selectors
+    // Find first non-password input
     let usernameInput = null;
-    const selectors = [
-      '#login_loginid_input_01',
-      'input[type="text"]',
-      'input[placeholder*="phone"]',
-      'input[placeholder*="number"]',
-      'input[placeholder*="id"]',
-      '.ant-input',
-      'input:not([type="password"])'
-    ];
-    
-    for (const selector of selectors) {
-      console.log(`  Trying selector: ${selector}`);
-      usernameInput = await page.$(selector);
-      if (usernameInput) {
-        console.log(`  ✓ Found with: ${selector}`);
+    for (let i = 0; i < inputs.length; i++) {
+      const type = await inputs[i].evaluate(el => el.type);
+      if (type !== 'password') {
+        usernameInput = inputs[i];
+        console.log('  ✓ Using input', i, 'type:', type);
         break;
       }
     }
     
     if (!usernameInput) {
-      throw new Error('Username input not found with any selector');
+      throw new Error('No username input found');
     }
-    
-    await sleep(1000);
-    
-    // Click to focus
-    await usernameInput.click();
-    console.log('  ✓ Clicked username field');
-    await sleep(500);
-    
-    // Type username slowly
-    await usernameInput.type(WE_USERNAME, { delay: 50 });
-    console.log('  ✓ Typed username:', WE_USERNAME);
-    await sleep(1000);
-    
-    // Verify username was entered
-    const usernameValue = await page.evaluate(() => {
-      const inputs = document.querySelectorAll('input:not([type="password"])');
-      for (let inp of inputs) {
-        if (inp.value) return inp.value;
-      }
-      return null;
-    });
-    console.log('  ✓ Username verified:', usernameValue);
-    
-    if (usernameValue !== WE_USERNAME) {
-      console.log('  ⚠ Username mismatch, retrying...');
-      await page.evaluate((username) => {
-        const inputs = document.querySelectorAll('input:not([type="password"])');
-        if (inputs[0]) {
-          inputs[0].value = username;
-          inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
-          inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      }, WE_USERNAME);
-      await sleep(500);
-    }
-    
-    // ========== STEP 3: SERVICE TYPE DROPDOWN ==========
-    console.log('\n3️⃣ SELECTING SERVICE TYPE...');
-    console.log('  Looking for dropdown...');
-    
-    // Wait for dropdown to exist
-    await page.waitForFunction(
-      () => {
-        return document.querySelector('.ant-select') || 
-               document.querySelector('.ant-select-selector') ||
-               document.querySelector('[class*="select"]');
-      },
-      { timeout: 30000 }
-    );
-    console.log('  ✓ Dropdown element found');
     
     await sleep(2000);
+    await usernameInput.click();
+    await sleep(500);
+    await usernameInput.type(WE_USERNAME, { delay: 80 });
+    console.log('  ✓ Username entered');
+    await sleep(2000);
     
-    // Log dropdown state
-    const dropdownInfo = await page.evaluate(() => {
-      const dropdown = document.querySelector('.ant-select-selector');
-      return {
-        exists: !!dropdown,
-        visible: dropdown ? dropdown.offsetParent !== null : false,
-        classes: dropdown ? dropdown.className : null,
-        text: dropdown ? dropdown.innerText : null
-      };
-    });
-    console.log('  Dropdown state:', JSON.stringify(dropdownInfo));
+    // ========== STEP 3: DROPDOWN ==========
+    console.log('\n3️⃣ DROPDOWN...');
     
-    // Click dropdown multiple times
-    console.log('  Clicking dropdown...');
-    for (let i = 0; i < 5; i++) {
-      await page.click('.ant-select-selector').catch(() => {});
-      console.log(`  Click attempt ${i + 1}/5`);
+    // Find dropdown
+    const dropdowns = await page.$$('.ant-select, [class*="select"]');
+    console.log('  Found', dropdowns.length, 'dropdowns');
+    
+    if (dropdowns.length > 0) {
       await sleep(1000);
       
-      // Check if options appeared
-      const optionsVisible = await page.evaluate(() => {
-        const options = document.querySelectorAll('.ant-select-item-option, .ant-select-item, .ant-select-dropdown');
-        return options.length > 0;
-      });
+      // Click dropdown
+      await dropdowns[0].click();
+      console.log('  ✓ Clicked dropdown');
+      await sleep(2000);
       
-      if (optionsVisible) {
-        console.log('  ✓ Dropdown opened, options visible');
-        break;
-      }
-    }
-    
-    await sleep(2000);
-    
-    // Try multiple ways to select "Internet"
-    console.log('  Selecting "Internet" option...');
-    
-    // Method 1: Direct click
-    const method1Success = await page.evaluate(() => {
-      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, div'));
-      for (let item of items) {
-        const text = item.textContent?.toLowerCase() || '';
-        if (text.includes('internet') && !text.includes('mobile')) {
-          item.click();
-          return true;
-        }
-      }
-      return false;
-    });
-    
-    if (method1Success) {
-      console.log('  ✓ Method 1: Direct click succeeded');
-    } else {
-      console.log('  ✗ Method 1 failed, trying keyboard...');
-      
-      // Method 2: Keyboard
-      await page.keyboard.press('ArrowDown');
-      await sleep(300);
-      await page.keyboard.press('ArrowDown');
-      await sleep(300);
-      await page.keyboard.press('Enter');
-      console.log('  ✓ Method 2: Keyboard navigation attempted');
-    }
-    
-    await sleep(2000);
-    
-    // Verify selection
-    const selectedValue = await page.evaluate(() => {
-      const selected = document.querySelector('.ant-select-selection-item');
-      return selected ? selected.textContent.trim() : null;
-    });
-    console.log('  Selected value:', selectedValue || 'UNKNOWN');
-    
-    if (!selectedValue || !selectedValue.toLowerCase().includes('internet')) {
-      console.log('  ⚠ Selection unclear, forcing value...');
-      
-      // Force click dropdown again and select
-      await page.click('.ant-select-selector');
-      await sleep(1500);
+      // Select Internet
       await page.evaluate(() => {
-        const items = document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, div, span');
+        const items = document.querySelectorAll('li, div, span');
         for (let item of items) {
           if (item.textContent?.toLowerCase().includes('internet')) {
             item.click();
@@ -294,163 +151,107 @@ async function harvestQuota() {
           }
         }
       });
-      await sleep(1000);
+      console.log('  ✓ Selected Internet');
+      await sleep(2000);
+    } else {
+      console.log('  ⚠ No dropdown found, skipping');
     }
     
     // ========== STEP 4: PASSWORD ==========
-    console.log('\n4️⃣ FILLING PASSWORD...');
-    console.log('  Waiting for password field...');
+    console.log('\n4️⃣ PASSWORD...');
     
-    await sleep(2000);
-    
-    // Find password field
+    // Find password input
     let passwordInput = null;
-    const passwordSelectors = [
-      '#login_password_input_01',
-      'input[type="password"]',
-      'input[placeholder*="password"]',
-      'input[placeholder*="Password"]'
-    ];
-    
-    for (const selector of passwordSelectors) {
-      console.log(`  Trying selector: ${selector}`);
-      passwordInput = await page.$(selector);
-      if (passwordInput) {
-        console.log(`  ✓ Found with: ${selector}`);
+    for (let i = 0; i < inputs.length; i++) {
+      const type = await inputs[i].evaluate(el => el.type);
+      if (type === 'password') {
+        passwordInput = inputs[i];
+        console.log('  ✓ Found password field');
         break;
       }
     }
     
     if (!passwordInput) {
-      throw new Error('Password input not found');
+      // Refresh inputs list
+      const newInputs = await page.$$('input[type="password"]');
+      if (newInputs.length > 0) {
+        passwordInput = newInputs[0];
+        console.log('  ✓ Found password field (refreshed)');
+      }
+    }
+    
+    if (!passwordInput) {
+      throw new Error('Password field not found');
     }
     
     await sleep(1000);
-    
-    // Click password field
     await passwordInput.click();
-    console.log('  ✓ Clicked password field');
     await sleep(500);
-    
-    // Type password
-    await passwordInput.type(WE_PASSWORD, { delay: 50 });
+    await passwordInput.type(WE_PASSWORD, { delay: 80 });
     console.log('  ✓ Password entered');
-    await sleep(1000);
-    
-    // Verify password filled
-    const passwordFilled = await page.evaluate(() => {
-      const pwdInput = document.querySelector('input[type="password"]');
-      return pwdInput ? !!pwdInput.value : false;
-    });
-    console.log('  ✓ Password verified:', passwordFilled ? 'YES' : 'NO');
+    await sleep(2000);
     
     // ========== STEP 5: SUBMIT ==========
-    console.log('\n5️⃣ SUBMITTING FORM...');
+    console.log('\n5️⃣ SUBMIT...');
     
-    // Click outside to trigger validation
-    await page.click('body');
-    await sleep(1000);
+    // Find button
+    const buttons = await page.$$('button');
+    console.log('  Found', buttons.length, 'buttons');
     
-    // Find and click login button
-    const buttonClicked = await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button'));
-      for (let btn of buttons) {
-        const text = btn.textContent?.toLowerCase() || '';
-        if (text.includes('login') || text.includes('sign') || btn.type === 'submit') {
-          btn.click();
-          return true;
-        }
-      }
-      return false;
-    });
-    
-    if (buttonClicked) {
-      console.log('  ✓ Login button clicked');
+    if (buttons.length > 0) {
+      await buttons[0].click();
+      console.log('  ✓ Clicked button');
     } else {
-      console.log('  ⚠ Button not found, trying Enter key...');
       await page.keyboard.press('Enter');
+      console.log('  ✓ Pressed Enter');
     }
     
-    console.log('  Waiting for navigation...');
-    await sleep(12000);
+    await sleep(15000);
+    console.log('  ✓ Waited for navigation');
     
-    let url2;
-    try {
-      url2 = page.url();
-    } catch (e) {
-      url2 = 'unknown';
-    }
-    console.log('  New URL:', url2);
+    const finalUrl = page.url();
+    console.log('  Final URL:', finalUrl);
     
-    if (url2.includes('#/login')) {
-      const errorMsg = await page.evaluate(() => {
-        const errorEl = document.querySelector('.ant-form-item-explain-error, [class*="error"], .error-message');
-        return errorEl ? errorEl.innerText : null;
-      });
-      
-      if (errorMsg) {
-        console.log('  ❌ Login error:', errorMsg);
-      }
-      
-      throw new Error('Login failed - still on login page');
+    if (finalUrl.includes('login')) {
+      throw new Error('Still on login page');
     }
     
-    console.log('  ✓ Login successful!');
+    console.log('  ✓ Login successful');
     
-    // ========== STEP 6: EXTRACT DATA ==========
-    console.log('\n6️⃣ EXTRACTING QUOTA DATA...');
+    // ========== STEP 6: EXTRACT ==========
+    console.log('\n6️⃣ EXTRACT...');
     
     await sleep(5000);
-    console.log('  Waiting for data to load...');
     
     const data = await page.evaluate(() => {
-      const spans = Array.from(document.querySelectorAll('span, div, p'));
-      let remaining = null, used = null, balance = null, plan = null;
-
-      for (let i = 0; i < spans.length; i++) {
-        const t = spans[i].innerText?.trim();
-        if (!t) continue;
-        
-        if (t === 'Remaining' && spans[i-1]) {
-          remaining = parseFloat(spans[i-1].innerText);
-        }
-        if (t === 'Used' && spans[i-1]) {
-          used = parseFloat(spans[i-1].innerText);
-        }
-        if (t.includes('Balance') && spans[i+1]) {
-          balance = parseFloat(spans[i+1].innerText);
-        }
-        if (t.includes('GB') && t.toLowerCase().includes('speed')) {
-          plan = t;
-        }
-      }
-
-      const totalMatch = plan && plan.match(/(\d+)GB/);
-      const total = totalMatch ? parseFloat(totalMatch[1]) : (remaining && used ? remaining + used : 0);
-
-      return { remaining, used, total, balance, plan };
+      const text = document.body.innerText;
+      const remainingMatch = text.match(/Remaining[^\d]*(\d+\.?\d*)/i);
+      const usedMatch = text.match(/Used[^\d]*(\d+\.?\d*)/i);
+      const balanceMatch = text.match(/Balance[^\d]*(\d+\.?\d*)/i);
+      
+      return {
+        remaining: remainingMatch ? parseFloat(remainingMatch[1]) : 0,
+        used: usedMatch ? parseFloat(usedMatch[1]) : 0,
+        balance: balanceMatch ? parseFloat(balanceMatch[1]) : 0
+      };
     });
     
     console.log('  Remaining:', data.remaining, 'GB');
     console.log('  Used:', data.used, 'GB');
-    console.log('  Total:', data.total, 'GB');
     console.log('  Balance:', data.balance, 'EGP');
-    console.log('  Plan:', data.plan || 'Unknown');
     
-    if (data.remaining === null && data.remaining !== 0) {
-      throw new Error('No quota data found on page');
-    }
+    const total = data.remaining + data.used;
     
-    // ========== STEP 7: PUSH TO FIRESTORE ==========
-    console.log('\n7️⃣ UPLOADING TO FIRESTORE...');
+    // ========== STEP 7: FIRESTORE ==========
+    console.log('\n7️⃣ FIRESTORE...');
     
     const quotaData = {
       '104': {
         remaining: `${data.remaining.toFixed(2)} GB`,
         used: `${data.used.toFixed(2)} GB`,
-        total: `${data.total.toFixed(2)} GB`,
+        total: `${total.toFixed(2)} GB`,
         balance: `${data.balance.toFixed(2)} EGP`,
-        planName: data.plan || 'Unknown',
+        planName: 'Unknown',
         updatedAt: new Date().toISOString(),
         updatedBy: 'GitHub Cloud ⚡',
         status: 'success'
@@ -485,73 +286,51 @@ async function harvestQuota() {
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Firestore upload failed: ${response.status} - ${errorText}`);
+      throw new Error(`Firestore: ${response.status}`);
     }
     
-    console.log('  ✓ Data uploaded successfully');
-    console.log('\n✅ ✅ ✅ SUCCESS! ✅ ✅ ✅');
+    console.log('  ✓ Uploaded');
+    console.log('\n✅ SUCCESS!');
     
   } catch (error) {
-    console.error('\n❌ ❌ ❌ ERROR ❌ ❌ ❌');
-    console.error('Error:', error.message);
+    console.error('\n❌ ERROR:', error.message);
     
     if (page) {
       try {
-        const screenshot = await page.screenshot({ encoding: 'base64', fullPage: false });
-        console.log('\n📸 Screenshot captured (length):', screenshot.length);
-        
-        const pageState = await page.evaluate(() => {
-          return {
-            url: window.location.href,
-            title: document.title,
-            bodyText: document.body.innerText.substring(0, 1000)
-          };
-        }).catch(() => null);
-        
-        if (pageState) {
-          console.log('\n📄 Page State:');
-          console.log(JSON.stringify(pageState, null, 2));
+        const html = await page.content();
+        console.log('\nHTML length:', html.length);
+        if (html.length < 5000) {
+          console.log('Full HTML:', html);
         }
-      } catch (e) {
-        console.log('Could not capture diagnostics');
-      }
+      } catch (e) {}
     }
     
     throw error;
   } finally {
-    if (browser) {
-      await browser.close();
-      console.log('\n🔒 Browser closed');
-    }
+    if (browser) await browser.close();
   }
 }
 
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`\n${'='.repeat(60)}`);
+      console.log(`\n${'='.repeat(50)}`);
       console.log(`ATTEMPT ${attempt}/${MAX_RETRIES}`);
-      console.log('='.repeat(60));
+      console.log('='.repeat(50));
       
       await harvestQuota();
       
-      console.log('\n' + '='.repeat(60));
-      console.log('🎉 COMPLETE! ALL STEPS SUCCESSFUL! 🎉');
-      console.log('='.repeat(60));
-      
+      console.log('\n🎉 COMPLETE!');
       process.exit(0);
     } catch (error) {
-      console.error(`\n⚠️  Attempt ${attempt} failed: ${error.message}`);
+      console.error(`\nAttempt ${attempt} failed: ${error.message}`);
       
       if (attempt < MAX_RETRIES) {
-        const retryDelay = randomDelay(25000, 35000);
-        console.log(`\n⏳ Retrying in ${Math.floor(retryDelay/1000)} seconds...\n`);
-        await sleep(retryDelay);
+        const delay = randomDelay(30000, 45000);
+        console.log(`\nRetrying in ${Math.floor(delay/1000)}s...\n`);
+        await sleep(delay);
       } else {
-        console.error('\n' + '='.repeat(60));
-        console.error('💀 ALL ATTEMPTS FAILED 💀');
-        console.error('='.repeat(60));
+        console.error('\n💀 ALL FAILED');
         process.exit(1);
       }
     }
