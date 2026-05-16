@@ -78,7 +78,10 @@ async function harvestQuota() {
     
     console.log('  Getting title...');
     try {
-      title1 = await page.title();
+      title1 = await Promise.race([
+        page.title(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Title timeout')), 5000))
+      ]);
       console.log('  ✓ Got title:', title1);
     } catch (e) {
       console.log('  ⚠ Title error:', e.message);
