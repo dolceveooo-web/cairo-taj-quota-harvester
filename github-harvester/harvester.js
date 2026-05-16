@@ -19,13 +19,13 @@ function randomDelay(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-async function tryMultipleMethods(methodsArray, stepName) {
+async function tryMultipleMethods(methodsArray, stepName, timeout = 20000) {
   for (let i = 0; i < methodsArray.length; i++) {
     try {
       console.log(`  Method ${i + 1}/${methodsArray.length}...`);
       const result = await Promise.race([
         methodsArray[i](),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Method timeout')), 15000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Method timeout')), timeout))
       ]);
       console.log(`  ✓ Method ${i + 1} succeeded`);
       return result;
@@ -42,6 +42,7 @@ async function harvestQuota() {
   console.log('🚀 Cloud Harvester starting...');
   
   let browser;
+  let page;
   try {
     browser = await puppeteer.launch({
       headless: true,
@@ -51,12 +52,13 @@ async function harvestQuota() {
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-blink-features=AutomationControlled',
-        '--disable-features=IsolateOrigins,site-per-process'
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--window-size=1366,768'
       ],
       ignoreDefaultArgs: ['--enable-automation']
     });
 
-    const page = await browser.newPage();
+    page = await browser.newPage();
 
     await page.evaluateOnNewDocument(() => {
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -68,22 +70,27 @@ async function harvestQuota() {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1366, height: 768 });
     
-    // STEP 1: Navigate with 3 fallback methods
+    // STEP 1: Navigate with 4 fallback methods
     console.log('1️⃣ Navigating...');
     await tryMultipleMethods([
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 20000 });
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 25000 });
+        await page.waitForSelector('.ant-select', { timeout: 10000 }).catch(() => {});
         await sleep(3000);
       },
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 20000 });
-        await sleep(3000);
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle0', timeout: 30000 });
+        await sleep(2000);
       },
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { timeout: 20000 });
-        await sleep(5000);
+        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 25000 });
+        await sleep(4000);
+      },
+      async () => {
+        await page.goto('https://my.te.eg/echannel/', { timeout: 25000 });
+        await sleep(6000);
       }
-    ], 'Navigation');
+    ], 'Navigation', 35000);
     
     // STEP 2: Fill username with 3 fallback methods
     console.log('2️⃣ Username...');
@@ -111,60 +118,147 @@ async function harvestQuota() {
       }
     ], 'Username input');
     
-    // STEP 3: Select service type with 3 fallback methods
+    // STEP 3: Select service type with 6 fallback methods
     console.log('3️⃣ Service type...');
     await tryMultipleMethods([
+      // Method 1: Wait for dropdown, click, wait for options, click Internet
       async () => {
-        const dropdown = await page.$('.ant-select-selector');
-        if (!dropdown) throw new Error('Dropdown not found');
-        await dropdown.click();
-        await sleep(500);
+        await page.waitForSelector('.ant-select-selector', { timeout: 8000, visible: true });
+        await sleep(1000);
+        await page.click('.ant-select-selector');
+        await sleep(1500);
+        await page.waitForSelector('.ant-select-item-option', { timeout: 5000, visible: true });
         const selected = await page.evaluate(() => {
-          const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
+          const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item'));
           const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
-          if (internet) { internet.click(); return internet.textContent.trim(); }
-          return null;
+          if (internet) { internet.click(); return true; }
+          return false;
         });
         if (!selected) throw new Error('Internet option not found');
-        await sleep(300);
-      },
-      async () => {
-        await page.click('.ant-select');
         await sleep(500);
-        await page.keyboard.type('Internet');
-        await sleep(200);
-        await page.keyboard.press('Enter');
-        await sleep(300);
       },
+      // Method 2: Focus + keyboard navigation
       async () => {
-        await page.evaluate(() => {
-          const select = document.querySelector('.ant-select-selector');
-          if (select) select.click();
+        await page.waitForSelector('.ant-select', { timeout: 8000 });
+        await sleep(1000);
+        await page.focus('.ant-select');
+        await sleep(300);
+        await page.keyboard.press('Enter');
+        await sleep(1000);
+        await page.keyboard.type('Internet');
+        await sleep(500);
+        await page.keyboard.press('Enter');
+        await sleep(500);
+      },
+      // Method 3: Direct DOM manipulation with MutationObserver
+      async () => {
+        await sleep(1500);
+        const result = await page.evaluate(() => {
+          return new Promise((resolve, reject) => {
+            const select = document.querySelector('.ant-select-selector');
+            if (!select) return reject(new Error('Dropdown not found'));
+            
+            select.click();
+            
+            const observer = new MutationObserver(() => {
+              const items = document.querySelectorAll('.ant-select-item-option, .ant-select-item, li');
+              for (let item of items) {
+                if (item.textContent.toLowerCase().includes('internet')) {
+                  item.click();
+                  observer.disconnect();
+                  resolve(true);
+                  return;
+                }
+              }
+            });
+            
+            observer.observe(document.body, { childList: true, subtree: true });
+            setTimeout(() => { observer.disconnect(); reject(new Error('Timeout')); }, 5000);
+          });
         });
         await sleep(500);
+      },
+      // Method 4: Multiple click attempts with delays
+      async () => {
+        await sleep(2000);
+        for (let i = 0; i < 3; i++) {
+          await page.click('.ant-select-selector').catch(() => {});
+          await sleep(800);
+        }
         await page.evaluate(() => {
-          const items = document.querySelectorAll('[class*="select-item"]');
-          for (let item of items) {
-            if (item.textContent.toLowerCase().includes('internet')) {
-              item.click();
-              break;
+          const items = Array.from(document.querySelectorAll('[class*="select"][class*="item"], li, div[role="option"]'));
+          const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
+          if (internet) { internet.click(); return; }
+          throw new Error('Internet option not found');
+        });
+        await sleep(500);
+      },
+      // Method 5: Tab navigation from username field
+      async () => {
+        await page.focus('#login_loginid_input_01');
+        await sleep(500);
+        await page.keyboard.press('Tab');
+        await sleep(800);
+        await page.keyboard.press('Space');
+        await sleep(1000);
+        await page.keyboard.type('Internet');
+        await sleep(500);
+        await page.keyboard.press('Enter');
+        await sleep(500);
+      },
+      // Method 6: Force value via React internal properties
+      async () => {
+        await sleep(2500);
+        const result = await page.evaluate(() => {
+          const select = document.querySelector('.ant-select');
+          if (!select) throw new Error('Dropdown not found');
+          
+          // Try to find React fiber and trigger change
+          const reactKey = Object.keys(select).find(key => key.startsWith('__react'));
+          if (reactKey) {
+            const fiber = select[reactKey];
+            if (fiber?.memoizedProps?.onChange) {
+              fiber.memoizedProps.onChange('Internet');
+              return true;
             }
           }
+          
+          // Fallback: trigger all possible events
+          select.click();
+          setTimeout(() => {
+            const items = document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [role="option"]');
+            for (let item of items) {
+              if (item.textContent.toLowerCase().includes('internet')) {
+                item.click();
+                return;
+              }
+            }
+          }, 1000);
+          
+          return new Promise((resolve) => setTimeout(() => resolve(true), 2000));
         });
-        await sleep(300);
+        await sleep(1000);
       }
-    ], 'Service type selection');
+    ], 'Service type selection', 25000);
     
-    // STEP 4: Fill password with 3 fallback methods
+    // STEP 4: Fill password with 4 fallback methods
     console.log('4️⃣ Password...');
-    await sleep(1000); // Wait for dropdown to close
+    await sleep(1500); // Extended wait for dropdown to close
+    
+    // Verify dropdown selection succeeded
+    const dropdownValue = await page.evaluate(() => {
+      const selected = document.querySelector('.ant-select-selection-item');
+      return selected ? selected.textContent.trim() : null;
+    }).catch(() => null);
+    console.log('  Dropdown value:', dropdownValue || 'Unknown');
+    
     await tryMultipleMethods([
       async () => {
-        await page.waitForSelector('#login_password_input_01', { timeout: 5000, visible: true });
+        await page.waitForSelector('#login_password_input_01', { timeout: 8000, visible: true });
         await page.focus('#login_password_input_01');
-        await sleep(200);
-        await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
         await sleep(300);
+        await page.type('#login_password_input_01', WE_PASSWORD, { delay: 30 });
+        await sleep(500);
       },
       async () => {
         await sleep(1000);
@@ -173,16 +267,23 @@ async function harvestQuota() {
           if (input) input.value = password;
           else throw new Error('Password field not found');
         }, WE_PASSWORD);
-        await sleep(300);
+        await sleep(500);
       },
       async () => {
         await sleep(1500);
         const input = await page.$('#login_password_input_01');
         if (!input) throw new Error('Password input not found');
-        await input.type(WE_PASSWORD, { delay: 20 });
+        await input.type(WE_PASSWORD, { delay: 30 });
+        await sleep(500);
+      },
+      async () => {
+        await sleep(2000);
+        await page.click('#login_password_input_01');
         await sleep(300);
+        await page.keyboard.type(WE_PASSWORD, { delay: 30 });
+        await sleep(500);
       }
-    ], 'Password input');
+    ], 'Password input', 20000);
     
     // STEP 5: Submit with 3 fallback methods
     console.log('5️⃣ Submit...');
@@ -388,6 +489,34 @@ async function harvestQuota() {
     
   } catch (error) {
     console.error('❌ ERROR:', error.message);
+    
+    // Capture screenshot on failure
+    if (page) {
+      try {
+        const screenshot = await page.screenshot({ encoding: 'base64', fullPage: false });
+        console.log('  Screenshot captured (base64 length):', screenshot.length);
+        
+        // Log page state for debugging
+        const pageState = await page.evaluate(() => {
+          return {
+            url: window.location.href,
+            title: document.title,
+            dropdownExists: !!document.querySelector('.ant-select'),
+            dropdownValue: document.querySelector('.ant-select-selection-item')?.textContent || null,
+            usernameValue: document.querySelector('#login_loginid_input_01')?.value || null,
+            passwordFilled: !!document.querySelector('#login_password_input_01')?.value,
+            visibleText: document.body.innerText.substring(0, 500)
+          };
+        }).catch(() => null);
+        
+        if (pageState) {
+          console.log('  Page state:', JSON.stringify(pageState, null, 2));
+        }
+      } catch (screenshotError) {
+        console.log('  Could not capture screenshot:', screenshotError.message);
+      }
+    }
+    
     throw error;
   } finally {
     if (browser) await browser.close();
