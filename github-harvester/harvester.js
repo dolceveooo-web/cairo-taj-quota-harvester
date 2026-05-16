@@ -188,23 +188,28 @@ async function harvestQuota() {
     console.log('5️⃣ Submit...');
     await tryMultipleMethods([
       async () => {
+        // Trigger validation by clicking outside first
+        await page.click('body');
+        await sleep(500);
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button'));
           const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
           if (btn) btn.click();
           else throw new Error('Login button not found');
         });
-        await sleep(8000);
+        await sleep(10000);
       },
       async () => {
+        await page.click('#login_password_input_01');
+        await sleep(300);
         await page.keyboard.press('Enter');
-        await sleep(8000);
+        await sleep(10000);
       },
       async () => {
         const button = await page.$('button[type="submit"]');
         if (button) await button.click();
         else throw new Error('Submit button not found');
-        await sleep(8000);
+        await sleep(10000);
       }
     ], 'Submit');
     
@@ -212,6 +217,12 @@ async function harvestQuota() {
     console.log('  URL:', url);
     
     if (url.includes('#/login')) {
+      // Check for error message
+      const errorMsg = await page.evaluate(() => {
+        const errorEl = document.querySelector('.ant-form-item-explain-error, [class*="error"], .error-message');
+        return errorEl ? errorEl.innerText : null;
+      });
+      if (errorMsg) console.log('  Error message:', errorMsg);
       throw new Error('Login failed');
     }
     console.log('  ✓ Login successful');
@@ -339,7 +350,8 @@ async function harvestQuota() {
               },
               lastUpdate: { stringValue: quotaData.lastUpdate }
             }
-          })
+          }),
+          timeout: 10000
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
       },
