@@ -153,7 +153,7 @@ async function harvestQuota() {
     console.log('  --- END DIAGNOSTICS ---\n');
 
     // Human-like pause before typing
-    const delay1 = randomDelay(2000, 4000);
+    const delay1 = randomDelay(2000, 5000);
     console.log(`  ⏳ Human delay: ${delay1}ms`);
     await sleep(delay1);
 
@@ -258,7 +258,7 @@ async function harvestQuota() {
     console.log('  ✓ Service number entered\n');
 
     // Human-like pause after typing username
-    const delay2 = randomDelay(1500, 3000);
+    const delay2 = randomDelay(2000, 5000);
     console.log(`  ⏳ Human delay: ${delay2}ms`);
     await sleep(delay2);
 
@@ -352,7 +352,7 @@ async function harvestQuota() {
     console.log('  ✓ Dropdown done\n');
 
     // Human-like pause before password
-    const delay3 = randomDelay(1500, 3500);
+    const delay3 = randomDelay(2000, 5000);
     console.log(`  ⏳ Human delay: ${delay3}ms`);
     await sleep(delay3);
 
@@ -419,7 +419,7 @@ async function harvestQuota() {
     console.log('  ✓ Password done\n');
 
     // Human-like pause before clicking login
-    const delay4 = randomDelay(2000, 4000);
+    const delay4 = randomDelay(2000, 5000);
     console.log(`  ⏳ Human delay: ${delay4}ms`);
     await sleep(delay4);
 
