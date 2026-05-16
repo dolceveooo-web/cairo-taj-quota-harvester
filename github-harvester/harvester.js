@@ -16,6 +16,7 @@ async function harvestQuota() {
   try {
     browser = await puppeteer.launch({
       headless: true,
+      protocolTimeout: 120000,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -55,47 +56,62 @@ async function harvestQuota() {
     if (dropdown) {
       console.log('  Found dropdown, clicking...');
       await dropdown.click();
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 3000)); // Wait 3 seconds for dropdown
     } else {
       console.log('  Dropdown not found, trying direct evaluation...');
       await page.evaluate(() => {
         const selects = document.querySelectorAll('[class*="select"], select, .ant-select');
         if (selects[0]) selects[0].click();
       });
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    
+    // Wait for dropdown items to appear
+    try {
+      await page.waitForSelector('.ant-select-item-option, .ant-select-item', { timeout: 5000 });
+      console.log('  Dropdown items appeared');
+    } catch (e) {
+      console.log('  Dropdown items not found, continuing anyway...');
     }
     
     const clicked = await page.evaluate(() => {
       const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [class*="option"]'));
-      console.log('Found ' + items.length + ' dropdown items');
-      const internet = items.find(i => i.textContent && i.textContent.toLowerCase().includes('internet'));
+      const visibleItems = items.filter(i => i.offsetParent !== null);
+      console.log('Total items: ' + items.length + ', Visible: ' + visibleItems.length);
+      
+      const internet = visibleItems.find(i => i.textContent && i.textContent.toLowerCase().includes('internet'));
       if (internet) { 
+        console.log('Found Internet option: ' + internet.textContent);
         internet.click(); 
         return internet.textContent.trim(); 
       }
-      // Fallback: click first item that looks like an option
-      if (items.length > 0) {
-        items[0].click();
-        return items[0].textContent.trim();
+      
+      // Try clicking first visible item
+      if (visibleItems.length > 0) {
+        console.log('Clicking first visible item: ' + visibleItems[0].textContent);
+        visibleItems[0].click();
+        return visibleItems[0].textContent.trim();
       }
+      
       return null;
     });
     console.log('  Selected: ' + (clicked || 'FAILED'));
+    
+    if (!clicked) {
+      throw new Error('Could not select service type from dropdown');
+    }
+    
     await new Promise(r => setTimeout(r, 1000));
     
     console.log('4️⃣ Filling password...');
-    await page.focus('#login_password_input_01');
-    await new Promise(r => setTimeout(r, 200));
-    await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
-    await new Promise(r => setTimeout(r, 300));
+    await page.keyboard.press('Tab');
+    await page.waitForTimeout(500);
+    await page.keyboard.type(WE_PASSWORD, { delay: 50 });
+    await page.waitForTimeout(500);
     
     console.log('5️⃣ Submitting login...');
-    await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button'));
-      const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
-      if (btn) btn.click();
-    });
-    await new Promise(r => setTimeout(r, 6000));
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(8000);
     
     const urlAfter = page.url();
     console.log('  URL: ' + urlAfter);
