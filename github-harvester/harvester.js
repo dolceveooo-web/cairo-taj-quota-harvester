@@ -459,31 +459,72 @@ async function harvestQuota() {
 
       console.log('  🔐 CAPTCHA DETECTED - attempting to solve...');
 
-      // ── Helper: Find captcha image element precisely ──
-      // WE captcha: ~200x58px, NOT a logo/icon/banner, has noisy background
+      // ── DOM SCOUT: dump everything visible so we never fly blind ──
+      const scout = await page.evaluate(() => {
+        const allInputs = Array.from(document.querySelectorAll('input'));
+        const allImgs = Array.from(document.querySelectorAll('img'));
+        const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+        const modalInputs = modal ? Array.from(modal.querySelectorAll('input')) : [];
+        const modalImgs = modal ? Array.from(modal.querySelectorAll('img')) : [];
+        return {
+          modalFound: !!modal,
+          modalClass: modal ? modal.className : 'none',
+          allInputs: allInputs.map(i => ({
+            id: i.id, type: i.type, placeholder: i.placeholder,
+            cls: i.className.substring(0,60), visible: i.offsetParent !== null,
+            rect: { w: Math.round(i.getBoundingClientRect().width), h: Math.round(i.getBoundingClientRect().height) }
+          })),
+          modalInputs: modalInputs.map(i => ({
+            id: i.id, type: i.type, placeholder: i.placeholder,
+            cls: i.className.substring(0,60), visible: i.offsetParent !== null
+          })),
+          allImgs: allImgs.map(img => {
+            const r = img.getBoundingClientRect();
+            return {
+              src: (img.src||'').substring(0,60), w: Math.round(r.width), h: Math.round(r.height),
+              nat: img.naturalWidth + 'x' + img.naturalHeight,
+              inModal: modal ? modal.contains(img) : false
+            };
+          }),
+          bodyText: document.body.innerText.substring(0, 300)
+        };
+      });
+      console.log('  --- CAPTCHA SCOUT ---');
+      console.log('  Modal found:', scout.modalFound, '| class:', scout.modalClass);
+      console.log('  All inputs:', JSON.stringify(scout.allInputs));
+      console.log('  Modal inputs:', JSON.stringify(scout.modalInputs));
+      scout.allImgs.forEach((img, i) => console.log(`  img[${i}] ${img.w}x${img.h} nat=${img.nat} inModal=${img.inModal} src=${img.src}`));
+      console.log('  Body text:', scout.bodyText.replace(/\n/g, ' | ').substring(0, 200));
+      console.log('  --- END SCOUT ---');
+
+      // ── Helper: Find captcha image (MUST be inside modal, exclude badges) ──
       async function getCaptchaImgElement() {
         return await page.evaluateHandle(() => {
-          const imgs = document.querySelectorAll('img');
-          // Pass 1: size-based match (captcha is ~120-300w, 30-100h)
+          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+          const searchIn = modal || document.body;
+          const imgs = searchIn.querySelectorAll('img');
           for (const img of imgs) {
             const src = (img.src || '').toLowerCase();
-            if (src.includes('logo') || src.includes('icon') || src.includes('banner') || src.includes('sprite')) continue;
+            // Skip: logos, icons, banners, app store badges, social icons
+            if (src.includes('logo') || src.includes('icon') || src.includes('banner') ||
+                src.includes('sprite') || src.includes('apple') || src.includes('google') ||
+                src.includes('play') || src.includes('store') || src.includes('huawei') ||
+                src.includes('appgallery') || src.includes('badge') || src.includes('footer') ||
+                src.includes('social') || src.includes('facebook') || src.includes('twitter')) continue;
             const r = img.getBoundingClientRect();
-            if (r.width > 80 && r.width < 350 && r.height > 25 && r.height < 120) return img;
+            // WE captcha: ~130-250w, ~40-80h
+            if (r.width > 100 && r.width < 300 && r.height > 30 && r.height < 100 && img.naturalWidth > 0) return img;
           }
-          // Pass 2: URL keyword match
+          // Fallback: URL keyword
           for (const img of imgs) {
             const src = (img.src || '').toLowerCase();
-            if (src.includes('captcha') || src.includes('verify') || src.includes('code') || src.includes('fileid')) return img;
+            if (src.includes('captcha') || src.includes('fileid') || src.includes('verify')) return img;
           }
-          // Pass 3: img inside modal
-          const modalImg = document.querySelector('.ant-modal img, [class*="modal"] img');
-          if (modalImg) return modalImg;
           return null;
         });
       }
 
-      // ── Helper: Canvas Red-Isolation preprocessing inside browser ──
+      // ── Helper: Canvas Red-Isolation ──
       async function canvasPreprocess(imgHandle) {
         return await page.evaluate((imgEl) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
@@ -496,39 +537,9 @@ async function harvestQuota() {
           ctx.drawImage(imgEl, 0, 0, c.width, c.height);
           const imgData = ctx.getImageData(0, 0, c.width, c.height);
           const d = imgData.data;
-          // RED ISOLATION: keep only red-ish pixels → black, everything else → white
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
             if (r > 130 && g < 120 && b < 120 && (r - g) > 40) {
-              d[i] = d[i+1] = d[i+2] = 0;
-            } else {
-              d[i] = d[i+1] = d[i+2] = 255;
-            }
-          }
-          ctx.putImageData(imgData, 0, 0);
-          return c.toDataURL('image/png');
-        }, imgHandle);
-      }
-
-      // ── Helper: Canvas Aggressive threshold (fallback) ──
-      async function canvasAggressivePreprocess(imgHandle) {
-        return await page.evaluate((imgEl) => {
-          if (!imgEl || !imgEl.naturalWidth) return null;
-          const scale = 4;
-          const c = document.createElement('canvas');
-          c.width = imgEl.naturalWidth * scale;
-          c.height = imgEl.naturalHeight * scale;
-          const ctx = c.getContext('2d');
-          ctx.imageSmoothingEnabled = false;
-          ctx.drawImage(imgEl, 0, 0, c.width, c.height);
-          const imgData = ctx.getImageData(0, 0, c.width, c.height);
-          const d = imgData.data;
-          for (let i = 0; i < d.length; i += 4) {
-            const r = d[i], g = d[i+1], b = d[i+2];
-            const lum = 0.299*r + 0.587*g + 0.114*b;
-            const maxC = Math.max(r,g,b), minC = Math.min(r,g,b);
-            const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
-            if (lum < 140 || (sat > 0.4 && lum < 200)) {
               d[i] = d[i+1] = d[i+2] = 0;
             } else {
               d[i] = d[i+1] = d[i+2] = 255;
@@ -550,175 +561,150 @@ async function harvestQuota() {
         return text.replace(/[^A-Za-z0-9]/g, '').trim();
       }
 
-      // ── Helper: Submit captcha answer ──
-      async function submitCaptchaAnswer(answer) {
-        console.log('  Submitting answer:', answer);
-        const typed = await page.evaluate((ans) => {
-          const inp = document.querySelector('#login_input_type_01') ||
-                      document.querySelector('.ant-modal input[type="text"]') ||
-                      document.querySelector('[class*="modal"] input[type="text"]') ||
-                      document.querySelector('input[placeholder*="ode"]') ||
-                      document.querySelector('input[type="search"]');
-          if (!inp) return false;
-          inp.focus();
-          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-          nativeSetter.call(inp, '');
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
-          nativeSetter.call(inp, ans);
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
-          inp.dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
+      // ── Helper: Find & type into captcha input (ultimate multi-strategy) ──
+      async function typeCaptchaAnswer(answer) {
+        console.log('  Typing answer:', answer);
+
+        // Strategy 1: Find ANY input that is NOT the username or password field
+        let found = await page.evaluate((ans) => {
+          const allInputs = Array.from(document.querySelectorAll('input'));
+          for (const inp of allInputs) {
+            if (inp.id === 'login_loginid_input_01') continue;
+            if (inp.id === 'login_password_input_01') continue;
+            if (inp.type === 'hidden') continue;
+            // This must be the captcha input
+            inp.focus();
+            inp.click();
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(inp, '');
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            nativeSetter.call(inp, ans);
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            return 'found:' + (inp.id || inp.type || inp.className.substring(0,30));
+          }
+          return null;
         }, answer);
-        if (!typed) throw new Error('no captcha input found');
+
+        if (found) {
+          console.log('  Input strategy 1 (exclude known IDs):', found);
+        } else {
+          // Strategy 2: Look inside modal specifically
+          found = await page.evaluate((ans) => {
+            const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+            if (!modal) return null;
+            const inp = modal.querySelector('input');
+            if (!inp) return null;
+            inp.focus();
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+            nativeSetter.call(inp, ans);
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            return 'modal-input';
+          }, answer);
+          if (found) console.log('  Input strategy 2 (modal scan):', found);
+        }
+
+        if (!found) {
+          // Strategy 3: Tab from the captcha image to reach the input field
+          console.log('  Input strategy 3 (keyboard Tab)...');
+          await page.keyboard.press('Tab');
+          await sleep(300);
+          await page.keyboard.type(answer, { delay: 50 });
+          found = 'tab-keyboard';
+        }
+
         await sleep(500);
+
+        // Click OK button
         await page.evaluate(() => {
           const btns = document.querySelectorAll('button');
           for (const btn of btns) {
-            const t = btn.textContent.toLowerCase();
-            if (t.includes('ok') || t === 'ok') { btn.click(); return; }
+            const t = (btn.textContent || '').toLowerCase().trim();
+            if (t === 'ok' || t.includes('ok')) { btn.click(); return; }
           }
-          if (btns.length) btns[btns.length - 1].click();
+          // Fallback: any primary/submit button inside modal
+          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+          if (modal) {
+            const mBtn = modal.querySelector('button.ant-btn-primary, button[type="submit"], button');
+            if (mBtn) mBtn.click();
+          }
         });
         await sleep(5000);
         return !page.url().includes('login');
       }
 
-      // ── Helper: Click refresh on captcha ──
+      // ── Helper: Refresh captcha ──
       async function refreshCaptcha() {
         await page.evaluate(() => {
-          const els = document.querySelectorAll('button, span, i, svg, img');
+          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+          const searchIn = modal || document.body;
+          const els = searchIn.querySelectorAll('button, span, i, svg, a');
           for (const el of els) {
             const cls = (el.className || '').toString().toLowerCase();
             const title = (el.title || '').toLowerCase();
+            const text = (el.textContent || '').toLowerCase();
             if (cls.includes('refresh') || cls.includes('reload') || cls.includes('sync') ||
-                cls.includes('anticon-sync') || title.includes('refresh')) {
+                cls.includes('anticon-sync') || title.includes('refresh') || text.includes('refresh')) {
               el.click(); return;
             }
           }
-          const imgs = document.querySelectorAll('.ant-modal img, [class*="modal"] img');
-          if (imgs.length > 1) imgs[1].click();
         });
-        await sleep(2000);
+        await sleep(2500);
       }
 
-      function isValidCaptcha(text) { return text.length >= 4 && text.length <= 7; }
+      // WE captcha is ALWAYS exactly 5 characters
+      function isValidCaptcha(text) { return text.length === 5; }
 
       let captchaSolved = false;
 
-      // ── C1: Canvas Red-Isolation + OCR PSM8 (BEST for WE red-text captcha) ──
-      if (!captchaSolved) {
-        try {
-          console.log('  [C1] Canvas Red-Isolation + OCR PSM8...');
-          const imgHandle = await getCaptchaImgElement();
-          const b64 = await canvasPreprocess(imgHandle);
-          if (!b64) throw new Error('canvas returned null');
-          const text = await runOCR(b64, '8');
-          console.log('  [C1] OCR:', text, '(len:', text.length, ')');
-          if (isValidCaptcha(text)) {
-            captchaSolved = await submitCaptchaAnswer(text);
-            if (captchaSolved) console.log('  [C1] ✓ SOLVED!');
-          }
-        } catch (e) { console.log('  [C1] Failed:', e.message); }
-      }
-
-      // ── C2: Canvas Red-Isolation + OCR PSM7 (single line mode) ──
-      if (!captchaSolved) {
-        try {
-          console.log('  [C2] Canvas Red-Isolation + PSM7...');
-          const imgHandle = await getCaptchaImgElement();
-          const b64 = await canvasPreprocess(imgHandle);
-          if (!b64) throw new Error('null');
-          const text = await runOCR(b64, '7');
-          console.log('  [C2] OCR:', text, '(len:', text.length, ')');
-          if (isValidCaptcha(text)) {
-            captchaSolved = await submitCaptchaAnswer(text);
-            if (captchaSolved) console.log('  [C2] ✓ SOLVED!');
-          }
-        } catch (e) { console.log('  [C2] Failed:', e.message); }
-      }
-
-      // ── C3: Canvas Aggressive threshold + OCR ──
-      if (!captchaSolved) {
-        try {
-          console.log('  [C3] Canvas Aggressive threshold + OCR...');
-          const imgHandle = await getCaptchaImgElement();
-          const b64 = await canvasAggressivePreprocess(imgHandle);
-          if (!b64) throw new Error('null');
-          const text = await runOCR(b64, '8');
-          console.log('  [C3] OCR:', text, '(len:', text.length, ')');
-          if (isValidCaptcha(text)) {
-            captchaSolved = await submitCaptchaAnswer(text);
-            if (captchaSolved) console.log('  [C3] ✓ SOLVED!');
-          }
-        } catch (e) { console.log('  [C3] Failed:', e.message); }
-      }
-
-      // ── C4: Refresh + Canvas Red-Isolation + OCR (fresh captcha) ──
-      if (!captchaSolved) {
-        try {
-          console.log('  [C4] Refresh + Red-Isolation + OCR...');
+      // ── MAIN CAPTCHA LOOP: up to 8 total attempts with fresh captchas ──
+      for (let round = 0; round < 8 && !captchaSolved; round++) {
+        if (round > 0) {
+          console.log(`  [Round ${round+1}] Refreshing captcha for new attempt...`);
           await refreshCaptcha();
+        }
+
+        try {
           const imgHandle = await getCaptchaImgElement();
           const b64 = await canvasPreprocess(imgHandle);
-          if (!b64) throw new Error('null');
-          const text = await runOCR(b64, '8');
-          console.log('  [C4] OCR:', text, '(len:', text.length, ')');
-          if (isValidCaptcha(text)) {
-            captchaSolved = await submitCaptchaAnswer(text);
-            if (captchaSolved) console.log('  [C4] ✓ SOLVED!');
-          }
-        } catch (e) { console.log('  [C4] Failed:', e.message); }
-      }
+          if (!b64) { console.log(`  [Round ${round+1}] Canvas returned null, skipping`); continue; }
 
-      // ── C5: Screenshot element + direct OCR ──
-      if (!captchaSolved) {
-        try {
-          console.log('  [C5] Screenshot element + OCR...');
-          await refreshCaptcha();
-          const imgHandle = await getCaptchaImgElement();
-          const el = imgHandle.asElement ? imgHandle.asElement() : imgHandle;
-          if (!el) throw new Error('not element');
-          const buf = await el.screenshot();
-          if (buf.length < 500) throw new Error('too small');
-          const text = await runOCR(buf, '8');
-          console.log('  [C5] OCR:', text, '(len:', text.length, ')');
-          if (isValidCaptcha(text)) {
-            captchaSolved = await submitCaptchaAnswer(text);
-            if (captchaSolved) console.log('  [C5] ✓ SOLVED!');
-          }
-        } catch (e) { console.log('  [C5] Failed:', e.message); }
-      }
+          // Try PSM 8 (single word) then PSM 7 (single line)
+          let text = await runOCR(b64, '8');
+          console.log(`  [Round ${round+1}] PSM8 OCR: "${text}" (len: ${text.length})`);
 
-      // ── C6: Multi-refresh + Red-Isolation loop (3 attempts) ──
-      if (!captchaSolved) {
-        console.log('  [C6] Multi-refresh loop (3 attempts)...');
-        for (let attempt = 0; attempt < 3 && !captchaSolved; attempt++) {
-          try {
-            await refreshCaptcha();
-            const imgHandle = await getCaptchaImgElement();
-            const b64 = await canvasPreprocess(imgHandle);
-            if (!b64) continue;
-            const text = await runOCR(b64, '8');
-            console.log(`  [C6] attempt ${attempt+1} OCR:`, text, '(len:', text.length, ')');
-            if (isValidCaptcha(text)) {
-              captchaSolved = await submitCaptchaAnswer(text);
-              if (captchaSolved) console.log('  [C6] ✓ SOLVED!');
-            }
-          } catch (e) { console.log(`  [C6] attempt ${attempt+1} failed:`, e.message); }
+          if (!isValidCaptcha(text)) {
+            text = await runOCR(b64, '7');
+            console.log(`  [Round ${round+1}] PSM7 OCR: "${text}" (len: ${text.length})`);
+          }
+
+          if (!isValidCaptcha(text)) {
+            console.log(`  [Round ${round+1}] Not 5 chars, refreshing...`);
+            continue;
+          }
+
+          captchaSolved = await typeCaptchaAnswer(text);
+          if (captchaSolved) {
+            console.log(`  [Round ${round+1}] ✓ CAPTCHA SOLVED!`);
+          } else {
+            console.log(`  [Round ${round+1}] Wrong answer, will retry with new captcha...`);
+          }
+        } catch (e) {
+          console.log(`  [Round ${round+1}] Error: ${e.message}`);
         }
       }
 
-      // ── C7: Cancel + throw to retry whole login ──
       if (!captchaSolved) {
-        console.log('  [C7] All methods failed - cancelling...');
+        console.log('  All 8 captcha attempts failed - cancelling...');
         await page.evaluate(() => {
           const btns = document.querySelectorAll('button');
           for (const btn of btns) {
-            if (btn.textContent.toLowerCase().includes('cancel')) { btn.click(); return; }
+            if ((btn.textContent||'').toLowerCase().includes('cancel')) { btn.click(); return; }
           }
         });
         await sleep(2000);
-        throw new Error('Captcha unsolvable - retrying whole login');
+        throw new Error('Captcha unsolvable after 8 attempts - retrying whole login');
       }
     }
 
