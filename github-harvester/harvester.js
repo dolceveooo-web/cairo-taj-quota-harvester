@@ -50,9 +50,9 @@ async function harvestQuota() {
     await page.setViewport({ width: 1366, height: 768 });
     
     console.log('1️⃣ Navigating...');
-    const response = await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 60000 });
+    const response = await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     console.log('  Status:', response.status());
-    await sleep(randomDelay(4000, 6000));
+    await sleep(5000);
     
     const pageTitle = await page.title();
     console.log('  Page title:', pageTitle);
