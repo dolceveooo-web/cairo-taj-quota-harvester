@@ -7,7 +7,9 @@
     "start": "node harvester.js"
   },
   "dependencies": {
-    "playwright-chromium": "^1.40.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
+    "puppeteer": "^21.0.0",
     "node-fetch": "^2.7.0"
   }
 }
