@@ -152,6 +152,11 @@ async function harvestQuota() {
     diag.inputs.forEach(inp => console.log(`    [${inp.i}] id="${inp.id}" type="${inp.type}" placeholder="${inp.placeholder}" visible=${inp.visible}`));
     console.log('  --- END DIAGNOSTICS ---\n');
 
+    // Human-like pause before typing
+    const delay1 = randomDelay(2000, 4000);
+    console.log(`  ⏳ Human delay: ${delay1}ms`);
+    await sleep(delay1);
+
     // ══════════════════════════════════════
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
     // ══════════════════════════════════════
@@ -252,6 +257,11 @@ async function harvestQuota() {
 
     console.log('  ✓ Service number entered\n');
 
+    // Human-like pause after typing username
+    const delay2 = randomDelay(1500, 3000);
+    console.log(`  ⏳ Human delay: ${delay2}ms`);
+    await sleep(delay2);
+
     // Wait for dropdown to appear after username triggers React re-render
     console.log('  Waiting for dropdown to appear...');
     await withTimeout(
@@ -341,6 +351,11 @@ async function harvestQuota() {
 
     console.log('  ✓ Dropdown done\n');
 
+    // Human-like pause before password
+    const delay3 = randomDelay(1500, 3500);
+    console.log(`  ⏳ Human delay: ${delay3}ms`);
+    await sleep(delay3);
+
     // ══════════════════════════════════════
     console.log('STEP 4: PASSWORD');
     // ══════════════════════════════════════
@@ -403,6 +418,11 @@ async function harvestQuota() {
 
     console.log('  ✓ Password done\n');
 
+    // Human-like pause before clicking login
+    const delay4 = randomDelay(2000, 4000);
+    console.log(`  ⏳ Human delay: ${delay4}ms`);
+    await sleep(delay4);
+
     // ══════════════════════════════════════
     console.log('STEP 5: SUBMIT');
     // ══════════════════════════════════════
@@ -440,23 +460,42 @@ async function harvestQuota() {
       }
     ], 'SUBMIT', 20000);
 
-    const finalUrl = page.url();
-    console.log('  Final URL:', finalUrl);
-
     // ══════════════════════════════════════
-    // CAPTCHA HANDLER (fallback if still on login)
+    // POST-SUBMIT: Wait for either navigation or captcha (race)
     // ══════════════════════════════════════
-    if (finalUrl.includes('login')) {
-      console.log('\n  ⚠ Still on login - checking for captcha...');
-
-      const captchaVisible = await page.evaluate(() => {
+    console.log('  Waiting for login result...');
+    let postLoginState = 'unknown'; // 'navigated' | 'captcha' | 'unknown'
+    for (let tick = 0; tick < 20; tick++) {
+      // Check 1: Did the URL change away from login?
+      const currentUrl = page.url();
+      if (!currentUrl.includes('login')) {
+        postLoginState = 'navigated';
+        console.log('  ✓ URL changed to:', currentUrl);
+        break;
+      }
+      // Check 2: Did a captcha modal appear?
+      const hasCaptcha = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
-        const title = document.body.innerText;
-        return !!modal || title.toLowerCase().includes('verification') || title.toLowerCase().includes('enter code');
+        const text = document.body.innerText.toLowerCase();
+        return !!modal || text.includes('verification') || text.includes('enter code');
       });
+      if (hasCaptcha) {
+        postLoginState = 'captcha';
+        console.log('  🔐 Captcha modal detected at', tick+1, 'seconds');
+        break;
+      }
+      if (tick % 3 === 0) console.log(`  Waiting... (${tick+1}s)`);
+      await sleep(1000);
+    }
 
-      if (!captchaVisible) throw new Error('Still on login page - no captcha detected');
+    if (postLoginState === 'unknown') {
+      throw new Error('Still on login page - no navigation or captcha after 20s');
+    }
 
+    // ══════════════════════════════════════
+    // CAPTCHA HANDLER (only if captcha was detected)
+    // ══════════════════════════════════════
+    if (postLoginState === 'captcha') {
       console.log('  🔐 CAPTCHA DETECTED - attempting to solve...');
 
       // Helper: get captcha img URL from page - SKIP logos/icons
