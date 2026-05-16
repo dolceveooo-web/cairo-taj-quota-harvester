@@ -50,7 +50,13 @@ async function harvestQuota() {
     console.log('3️⃣ Service type...');
     await page.click('.ant-select-selector');
     await sleep(randomDelay(700, 1000));
-    await page.click('text=Internet');
+    const selected = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
+      const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
+      if (internet) { internet.click(); return internet.textContent.trim(); }
+      return null;
+    });
+    console.log('  Selected:', selected || 'NOT FOUND');
     await sleep(randomDelay(1500, 2000));
     
     console.log('4️⃣ Password...');
@@ -61,7 +67,11 @@ async function harvestQuota() {
     console.log('  Password filled:', passwordValue.length, 'chars');
     
     console.log('5️⃣ Submit...');
-    await page.click('button[type="submit"]');
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+      if (btn) btn.click();
+    });
     await sleep(randomDelay(15000, 18000));
     
     const url = page.url();
