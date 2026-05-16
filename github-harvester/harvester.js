@@ -124,38 +124,75 @@ async function harvestQuota() {
     console.log('\n2️⃣ FILLING USERNAME...');
     console.log('  Looking for username field...');
     
-    // Wait explicitly for username field
-    await page.waitForSelector('#login_loginid_input_01', { 
-      visible: true, 
-      timeout: 20000 
+    // Check what inputs exist
+    const inputsInfo = await page.evaluate(() => {
+      const inputs = Array.from(document.querySelectorAll('input'));
+      return inputs.map(inp => ({
+        id: inp.id,
+        type: inp.type,
+        name: inp.name,
+        placeholder: inp.placeholder,
+        visible: inp.offsetParent !== null
+      }));
     });
-    console.log('  ✓ Username field found');
+    console.log('  Available inputs:', JSON.stringify(inputsInfo, null, 2));
+    
+    // Try multiple selectors
+    let usernameInput = null;
+    const selectors = [
+      '#login_loginid_input_01',
+      'input[type="text"]',
+      'input[placeholder*="phone"]',
+      'input[placeholder*="number"]',
+      'input[placeholder*="id"]',
+      '.ant-input',
+      'input:not([type="password"])'
+    ];
+    
+    for (const selector of selectors) {
+      console.log(`  Trying selector: ${selector}`);
+      usernameInput = await page.$(selector);
+      if (usernameInput) {
+        console.log(`  ✓ Found with: ${selector}`);
+        break;
+      }
+    }
+    
+    if (!usernameInput) {
+      throw new Error('Username input not found with any selector');
+    }
     
     await sleep(1000);
     
     // Click to focus
-    await page.click('#login_loginid_input_01');
+    await usernameInput.click();
     console.log('  ✓ Clicked username field');
     await sleep(500);
     
     // Type username slowly
-    await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 50 });
+    await usernameInput.type(WE_USERNAME, { delay: 50 });
     console.log('  ✓ Typed username:', WE_USERNAME);
     await sleep(1000);
     
     // Verify username was entered
     const usernameValue = await page.evaluate(() => {
-      return document.querySelector('#login_loginid_input_01')?.value;
+      const inputs = document.querySelectorAll('input:not([type="password"])');
+      for (let inp of inputs) {
+        if (inp.value) return inp.value;
+      }
+      return null;
     });
     console.log('  ✓ Username verified:', usernameValue);
     
     if (usernameValue !== WE_USERNAME) {
       console.log('  ⚠ Username mismatch, retrying...');
       await page.evaluate((username) => {
-        const input = document.querySelector('#login_loginid_input_01');
-        input.value = username;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
+        const inputs = document.querySelectorAll('input:not([type="password"])');
+        if (inputs[0]) {
+          inputs[0].value = username;
+          inputs[0].dispatchEvent(new Event('input', { bubbles: true }));
+          inputs[0].dispatchEvent(new Event('change', { bubbles: true }));
+        }
       }, WE_USERNAME);
       await sleep(500);
     }
@@ -273,27 +310,44 @@ async function harvestQuota() {
     
     await sleep(2000);
     
-    await page.waitForSelector('#login_password_input_01', { 
-      visible: true, 
-      timeout: 20000 
-    });
-    console.log('  ✓ Password field found');
+    // Find password field
+    let passwordInput = null;
+    const passwordSelectors = [
+      '#login_password_input_01',
+      'input[type="password"]',
+      'input[placeholder*="password"]',
+      'input[placeholder*="Password"]'
+    ];
+    
+    for (const selector of passwordSelectors) {
+      console.log(`  Trying selector: ${selector}`);
+      passwordInput = await page.$(selector);
+      if (passwordInput) {
+        console.log(`  ✓ Found with: ${selector}`);
+        break;
+      }
+    }
+    
+    if (!passwordInput) {
+      throw new Error('Password input not found');
+    }
     
     await sleep(1000);
     
     // Click password field
-    await page.click('#login_password_input_01');
+    await passwordInput.click();
     console.log('  ✓ Clicked password field');
     await sleep(500);
     
     // Type password
-    await page.type('#login_password_input_01', WE_PASSWORD, { delay: 50 });
+    await passwordInput.type(WE_PASSWORD, { delay: 50 });
     console.log('  ✓ Password entered');
     await sleep(1000);
     
     // Verify password filled
     const passwordFilled = await page.evaluate(() => {
-      return !!document.querySelector('#login_password_input_01')?.value;
+      const pwdInput = document.querySelector('input[type="password"]');
+      return pwdInput ? !!pwdInput.value : false;
     });
     console.log('  ✓ Password verified:', passwordFilled ? 'YES' : 'NO');
     
