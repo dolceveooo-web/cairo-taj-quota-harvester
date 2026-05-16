@@ -157,21 +157,26 @@ async function harvestQuota() {
     
     // STEP 4: Fill password with 3 fallback methods
     console.log('4️⃣ Password...');
+    await sleep(1000); // Wait for dropdown to close
     await tryMultipleMethods([
       async () => {
-        await page.waitForSelector('#login_password_input_01', { timeout: 10000, visible: true });
+        await page.waitForSelector('#login_password_input_01', { timeout: 5000, visible: true });
         await page.focus('#login_password_input_01');
         await sleep(200);
         await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
         await sleep(300);
       },
       async () => {
+        await sleep(1000);
         await page.evaluate((password) => {
-          document.querySelector('#login_password_input_01').value = password;
+          const input = document.querySelector('#login_password_input_01');
+          if (input) input.value = password;
+          else throw new Error('Password field not found');
         }, WE_PASSWORD);
         await sleep(300);
       },
       async () => {
+        await sleep(1500);
         const input = await page.$('#login_password_input_01');
         if (!input) throw new Error('Password input not found');
         await input.type(WE_PASSWORD, { delay: 20 });
