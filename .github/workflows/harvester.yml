@@ -1,36 +1,36 @@
 name: Cloud Quota Harvester
+
 on:
   schedule:
-    - cron: '0 */2 * * *' # Runs every 2 hours
-  workflow_dispatch:      # Allows you to trigger it manually
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+
 jobs:
   harvest:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v4
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '18'
           cache: 'npm'
-          cache-dependency-path: 'github-harvester/package.json'
+          cache-dependency-path: github-harvester/package-lock.json
       
-      - name: Install Dependencies
+      - name: Install dependencies
         run: |
           cd github-harvester
-          npm install
+          npm ci --prefer-offline --no-audit
       
-      - name: Run Harvester
+      - name: Run harvester
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           WE_USERNAME: ${{ secrets.WE_USERNAME }}
           WE_PASSWORD: ${{ secrets.WE_PASSWORD }}
-          # This allows it to use your manual session if Puppeteer fails
-          WE_SESSION_DATA: ${{ secrets.WE_SESSION_DATA }}
         run: |
           cd github-harvester
           node harvester.js
