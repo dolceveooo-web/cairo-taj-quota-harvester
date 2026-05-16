@@ -63,6 +63,18 @@ async function harvestQuota() {
     page = await browser.newPage();
 
     await page.evaluateOnNewDocument(() => {
+      // Kill alert/confirm/prompt before site JS runs - prevents "Prohibit use of console" dialog
+      window.alert = () => {};
+      window.confirm = () => true;
+      window.prompt = () => '';
+      
+      // Protect console from being overridden by site
+      Object.defineProperty(window, 'console', {
+        writable: false,
+        configurable: false
+      });
+      
+      // Existing stealth
       Object.defineProperty(navigator, 'webdriver', { get: () => false });
       window.navigator.chrome = { runtime: {} };
       Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
