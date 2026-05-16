@@ -50,17 +50,8 @@ async function harvestQuota() {
     await page.setViewport({ width: 1366, height: 768 });
     
     console.log('1️⃣ Navigating...');
-    const response = await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
-    console.log('  Status:', response.status());
+    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 30000 });
     await sleep(5000);
-    
-    const pageTitle = await page.title();
-    console.log('  Page title:', pageTitle);
-    
-    const hasLoginForm = await page.evaluate(() => {
-      return document.querySelectorAll('input').length >= 2;
-    });
-    console.log('  Login form present:', hasLoginForm);
     
     console.log('2️⃣ Username...');
     await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
