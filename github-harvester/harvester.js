@@ -30,10 +30,10 @@ async function tryMethods(methods, stepName, timeout) {
     try {
       console.log(`  [${i+1}/${methods.length}]`);
       const result = await withTimeout(methods[i](), timeout, `${stepName} M${i+1}`);
-      console.log(`  âœ“ Method ${i+1} SUCCESS`);
+      console.log(`  أ¢إ“â€œ Method ${i+1} SUCCESS`);
       return result;
     } catch (e) {
-      console.log(`  âœ— Method ${i+1} FAILED: ${e.message}`);
+      console.log(`  أ¢إ“â€” Method ${i+1} FAILED: ${e.message}`);
       if (i === methods.length - 1) throw new Error(`${stepName} ALL METHODS FAILED`);
       await sleep(500);
     }
@@ -41,7 +41,7 @@ async function tryMethods(methods, stepName, timeout) {
 }
 
 async function harvestQuota() {
-  console.log('ًںڑ€ STARTING...\n');
+  console.log('ظ‹ع؛ع‘â‚¬ STARTING...\n');
   let browser, page;
 
   try {
@@ -89,9 +89,9 @@ async function harvestQuota() {
       await dialog.accept();
     });
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 1: NAVIGATE');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
@@ -154,19 +154,19 @@ async function harvestQuota() {
 
     // Human-like pause before typing
     const delay1 = randomDelay(5000, 8000);
-    console.log(`  âڈ³ Human delay: ${delay1}ms`);
+    console.log(`  أ¢عˆآ³ Human delay: ${delay1}ms`);
     await sleep(delay1);
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
         await page.focus('#login_loginid_input_01');
-        await sleep(200);
-        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
-        await sleep(800);
+        await sleep(3000); // 3s pause before first keystroke
+        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: randomDelay(100, 200) });
+        await sleep(3000); // 3s pause after last keystroke
         console.log('    focus + type (local harvester method)');
       },
       // M2: $ find + click + type
@@ -255,11 +255,11 @@ async function harvestQuota() {
       }
     ], 'SERVICE NUMBER', 35000);
 
-    console.log('  âœ“ Service number entered\n');
+    console.log('  أ¢إ“â€œ Service number entered\n');
 
     // Human-like pause after typing username
     const delay2 = randomDelay(5000, 8000);
-    console.log(`  âڈ³ Human delay: ${delay2}ms`);
+    console.log(`  أ¢عˆآ³ Human delay: ${delay2}ms`);
     await sleep(delay2);
 
     // Wait for dropdown to appear after username triggers React re-render
@@ -267,7 +267,7 @@ async function harvestQuota() {
     await withTimeout(
       page.waitForFunction(() => !!document.querySelector('.ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
       16000, 'dropdown appearance'
-    ).catch(() => console.log('  âڑ  Dropdown wait timed out, proceeding anyway'));
+    ).catch(() => console.log('  أ¢ع‘آ  Dropdown wait timed out, proceeding anyway'));
     await sleep(1000);
 
     // Log dropdown state
@@ -279,9 +279,9 @@ async function harvestQuota() {
     })), 5000, 'dropdown diag').catch(() => null);
     console.log('  Dropdown state:', JSON.stringify(dropdownDiag));
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 3: DROPDOWN');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     await tryMethods([
       // M1: Wait for dropdown to exist then click
       async () => {
@@ -349,24 +349,24 @@ async function harvestQuota() {
       }
     ], 'DROPDOWN', 20000);
 
-    console.log('  âœ“ Dropdown done\n');
+    console.log('  أ¢إ“â€œ Dropdown done\n');
 
     // Human-like pause before password
     const delay3 = randomDelay(5000, 8000);
-    console.log(`  âڈ³ Human delay: ${delay3}ms`);
+    console.log(`  أ¢عˆآ³ Human delay: ${delay3}ms`);
     await sleep(delay3);
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 4: PASSWORD');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     await sleep(500);
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
         await page.focus('#login_password_input_01');
-        await sleep(200);
-        await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
-        await sleep(300);
+        await sleep(3000); // 3s pause before first keystroke
+        await page.type('#login_password_input_01', WE_PASSWORD, { delay: randomDelay(100, 200) });
+        await sleep(3000); // 3s pause after last keystroke
         console.log('    focus + type (local harvester method)');
       },
       // M2: $ find + click + type
@@ -416,16 +416,16 @@ async function harvestQuota() {
       }
     ], 'PASSWORD', 30000);
 
-    console.log('  âœ“ Password done\n');
+    console.log('  أ¢إ“â€œ Password done\n');
 
     // Human-like pause before clicking login
     const delay4 = randomDelay(5000, 8000);
-    console.log(`  âڈ³ Human delay: ${delay4}ms`);
+    console.log(`  أ¢عˆآ³ Human delay: ${delay4}ms`);
     await sleep(delay4);
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 5: SUBMIT');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
@@ -460,9 +460,9 @@ async function harvestQuota() {
       }
     ], 'SUBMIT', 20000);
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     // POST-SUBMIT: Wait for either navigation or captcha (race)
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown'; // 'navigated' | 'captcha' | 'unknown'
     for (let tick = 0; tick < 20; tick++) {
@@ -470,7 +470,7 @@ async function harvestQuota() {
       const currentUrl = page.url();
       if (!currentUrl.includes('login')) {
         postLoginState = 'navigated';
-        console.log('  âœ“ URL changed to:', currentUrl);
+        console.log('  أ¢إ“â€œ URL changed to:', currentUrl);
         break;
       }
       // Check 2: Did a captcha modal appear?
@@ -481,7 +481,7 @@ async function harvestQuota() {
       });
       if (hasCaptcha) {
         postLoginState = 'captcha';
-        console.log('  ًں”گ Captcha modal detected at', tick+1, 'seconds');
+        console.log('  ظ‹ع؛â€‌ع¯ Captcha modal detected at', tick+1, 'seconds');
         break;
       }
       if (tick % 3 === 0) console.log(`  Waiting... (${tick+1}s)`);
@@ -492,19 +492,19 @@ async function harvestQuota() {
       throw new Error('Still on login page - no navigation or captcha after 20s');
     }
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     // CAPTCHA HANDLER (only if captcha was detected)
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     if (postLoginState === 'captcha') {
-      console.log('  ًں”گ CAPTCHA DETECTED - Ultimate Engine v3...');
+      console.log('  ظ‹ع؛â€‌ع¯ CAPTCHA DETECTED - Ultimate Engine v3...');
 
-      // â”€â”€ HELPER: Get the captcha image element (largest img inside modal) â”€â”€
+      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Get the captcha image element (largest img inside modal) أ¢â€‌â‚¬أ¢â€‌â‚¬
       async function findCaptchaImg() {
         return await page.evaluateHandle(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return null;
           const imgs = Array.from(modal.querySelectorAll('img'));
-          // Sort by area descending â€” captcha is always the largest image in the modal
+          // Sort by area descending أ¢â‚¬â€‌ captcha is always the largest image in the modal
           imgs.sort((a, b) => {
             const aR = a.getBoundingClientRect(), bR = b.getBoundingClientRect();
             return (bR.width * bR.height) - (aR.width * aR.height);
@@ -518,7 +518,7 @@ async function harvestQuota() {
         });
       }
 
-      // â”€â”€ HELPER: Canvas preprocessing with 3 adaptive filters â”€â”€
+      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Canvas preprocessing with 3 adaptive filters أ¢â€‌â‚¬أ¢â€‌â‚¬
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
@@ -555,11 +555,11 @@ async function harvestQuota() {
         }, imgHandle, filter);
       }
 
-      // â”€â”€ HELPER: OCR via Tesseract â”€â”€
+      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: OCR via Tesseract أ¢â€‌â‚¬أ¢â€‌â‚¬
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
-        // Try PSM 8 (single word) â€” best for captchas
+        // Try PSM 8 (single word) أ¢â‚¬â€‌ best for captchas
         const r1 = await Tesseract.recognize(imageData, 'eng', {
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
           tessedit_pageseg_mode: '8'
@@ -578,9 +578,9 @@ async function harvestQuota() {
         return results;
       }
 
-      // â”€â”€ HELPER: Type answer into the modal input and click OK â”€â”€
+      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Type answer into the modal input and click OK أ¢â€‌â‚¬أ¢â€‌â‚¬
       async function submitAnswer(answer) {
-        console.log('    â†’ Submitting:', answer);
+        console.log('    أ¢â€ â€™ Submitting:', answer);
         const ok = await page.evaluate((ans) => {
           // Find the modal
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
@@ -604,7 +604,7 @@ async function harvestQuota() {
         }, answer);
         if (!ok) {
           // Keyboard fallback
-          console.log('    â†’ Modal input not found, using keyboard fallback');
+          console.log('    أ¢â€ â€™ Modal input not found, using keyboard fallback');
           await page.keyboard.press('Tab');
           await sleep(200);
           await page.keyboard.type(answer, { delay: 40 });
@@ -615,66 +615,70 @@ async function harvestQuota() {
         return !page.url().includes('login');
       }
 
-      // â”€â”€ HELPER: Refresh captcha and wait for new image â”€â”€
+      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Refresh captcha and wait for new image أ¢â€‌â‚¬أ¢â€‌â‚¬
+      // -- HELPER: Wait for captcha image after wrong answer/refresh --
       async function refreshCaptchaImg() {
-        // 1. Capture fingerprint of current captcha image
-        const oldFingerprint = await page.evaluate(() => {
-          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-          if (!modal) return '';
-          const imgs = Array.from(modal.querySelectorAll('img'));
-          imgs.sort((a, b) => (b.getBoundingClientRect().width * b.getBoundingClientRect().height) - (a.getBoundingClientRect().width * a.getBoundingClientRect().height));
-          return imgs[0] ? imgs[0].src.substring(0, 60) : '';
-        });
+        console.log('    Waiting for new captcha image...');
+        await sleep(2000);
 
-        // 2. Click the refresh element (2nd img in modal = refresh icon, or anticon-sync)
+        // Try clicking refresh icon if it exists
         await page.evaluate(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return;
-          // Try sync/refresh icon first
           const icon = modal.querySelector('.anticon-sync, .anticon-reload, [class*="refresh"], [class*="reload"]');
-          if (icon) { icon.click(); return; }
-          // Fallback: click the 2nd image (usually refresh icon)
-          const imgs = modal.querySelectorAll('img');
-          if (imgs.length > 1) imgs[1].click();
+          if (icon) icon.click();
+          else {
+            const imgs = modal.querySelectorAll('img');
+            if (imgs.length > 1) imgs[1].click();
+          }
         });
+        await sleep(3000);
 
-        // 3. Wait for the image src to actually change (up to 6s)
-        for (let w = 0; w < 12; w++) {
-          await sleep(500);
-          const newFp = await page.evaluate(() => {
+        // Poll until valid loaded image appears in modal
+        for (let w = 0; w < 10; w++) {
+          const found = await page.evaluate(() => {
             const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-            if (!modal) return '';
+            if (!modal) return false;
             const imgs = Array.from(modal.querySelectorAll('img'));
-            imgs.sort((a, b) => (b.getBoundingClientRect().width * b.getBoundingClientRect().height) - (a.getBoundingClientRect().width * a.getBoundingClientRect().height));
-            const img = imgs[0];
-            return (img && img.complete && img.naturalWidth > 0) ? img.src.substring(0, 60) : '';
+            for (const img of imgs) {
+              const r = img.getBoundingClientRect();
+              if (r.width > 80 && r.height > 25 && img.complete && img.naturalWidth > 0) return true;
+            }
+            return false;
           });
-          if (newFp && newFp !== oldFingerprint) {
-            console.log('    âœ“ New captcha loaded');
+          if (found) {
+            console.log('    New captcha ready');
             return true;
           }
+          await sleep(1000);
         }
-        console.log('    âڑ  Refresh timeout - image may not have changed');
+        console.log('    Warning: no valid image found after waiting');
         return false;
       }
 
-      // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+      // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
       // MAIN CAPTCHA SOLVING LOOP (12 rounds)
-      // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+      // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
       const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
-        console.log(`\n  â”€â”€ Round ${round}/12 â”€â”€`);
+        console.log(`\n  أ¢â€‌â‚¬أ¢â€‌â‚¬ Round ${round}/12 أ¢â€‌â‚¬أ¢â€‌â‚¬`);
 
         // Refresh captcha on rounds 2+
         if (round > 1) await refreshCaptchaImg();
 
         try {
-          // Get a FRESH handle to the captcha image
-          const imgHandle = await findCaptchaImg();
-          const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle);
-          if (!isValid) { console.log('    ! No valid captcha image found'); continue; }
+          // Wait for modal + image to be ready (up to 8s)
+          let imgHandle = null;
+          for (let retry = 0; retry < 8; retry++) {
+            imgHandle = await findCaptchaImg();
+            const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
+            if (isValid) break;
+            imgHandle = null;
+            await sleep(1000);
+          }
+          if (!imgHandle) { console.log('    ! No valid captcha image after 8s wait'); continue; }
 
           // Try each filter until we get a 5-char result
           let bestAnswer = '';
@@ -683,7 +687,7 @@ async function harvestQuota() {
             if (!b64) continue;
             const texts = await ocrRead(b64);
             const match = texts.find(t => t.length === 5);
-            console.log(`    [${filter}] OCR: ${JSON.stringify(texts)} ${match ? 'âœ“' : 'âœ—'}`);
+            console.log(`    [${filter}] OCR: ${JSON.stringify(texts)} ${match ? 'أ¢إ“â€œ' : 'أ¢إ“â€”'}`);
             if (match) { bestAnswer = match; break; }
           }
 
@@ -695,9 +699,9 @@ async function harvestQuota() {
           // Submit the answer
           captchaSolved = await submitAnswer(bestAnswer);
           if (captchaSolved) {
-            console.log(`  ًںژ‰ CAPTCHA SOLVED on round ${round}!`);
+            console.log(`  ظ‹ع؛عکâ€° CAPTCHA SOLVED on round ${round}!`);
           } else {
-            console.log(`    âœ— Wrong answer "${bestAnswer}", trying again...`);
+            console.log(`    أ¢إ“â€” Wrong answer "${bestAnswer}", trying again...`);
           }
         } catch (e) {
           console.log(`    ! Error: ${e.message}`);
@@ -715,11 +719,11 @@ async function harvestQuota() {
         throw new Error('Captcha unsolvable after 12 rounds - retrying login');
       }
     }
-    console.log('  âœ“ Login successful!\n');
+    console.log('  أ¢إ“â€œ Login successful!\n');
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 6: EXTRACT');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     const data = await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
@@ -766,9 +770,9 @@ async function harvestQuota() {
     console.log('  Balance:', data.balance, 'EGP');
     console.log('  Plan:', data.plan, '\n');
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     console.log('STEP 7: FIRESTORE');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
     const now = new Date().toISOString();
     const fields = {
       '104': { mapValue: { fields: {
@@ -778,7 +782,7 @@ async function harvestQuota() {
         used:     { doubleValue: data.used },
         plan:     { stringValue: data.plan },
         updatedAt: { stringValue: now },
-        updatedBy: { stringValue: 'GitHub Cloud âڑ،' },
+        updatedBy: { stringValue: 'GitHub Cloud أ¢ع‘طŒ' },
         status:   { stringValue: 'success' }
       }}},
       lastUpdate: { stringValue: now }
@@ -808,13 +812,13 @@ async function harvestQuota() {
       }
     ], 'FIRESTORE', 20000);
 
-    console.log('  âœ“ Uploaded!\n');
-    console.log('â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ');
-    console.log('âœ… âœ… âœ…  SUCCESS  âœ… âœ… âœ…');
-    console.log('â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ');
+    console.log('  أ¢إ“â€œ Uploaded!\n');
+    console.log('أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾');
+    console.log('أ¢إ“â€¦ أ¢إ“â€¦ أ¢إ“â€¦  SUCCESS  أ¢إ“â€¦ أ¢إ“â€¦ أ¢إ“â€¦');
+    console.log('أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾');
 
   } catch (error) {
-    console.error('\nâ‌Œ ERROR:', error.message);
+    console.error('\nأ¢â€Œإ’ ERROR:', error.message);
     if (page) {
       try {
         const ss = await withTimeout(page.screenshot({ encoding: 'base64' }), 5000, 'screenshot');
@@ -836,9 +840,9 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`\n${'â•گ'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'â•گ'.repeat(50)}\n`);
+      console.log(`\n${'أ¢â€¢ع¯'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'أ¢â€¢ع¯'.repeat(50)}\n`);
       await harvestQuota();
-      console.log('\nًںژ‰ COMPLETE!');
+      console.log('\nظ‹ع؛عکâ€° COMPLETE!');
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
@@ -847,7 +851,7 @@ async function main() {
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
         await sleep(d);
       } else {
-        console.error('\nًں’€ ALL ATTEMPTS FAILED');
+        console.error('\nظ‹ع؛â€™â‚¬ ALL ATTEMPTS FAILED');
         process.exit(1);
       }
     }
