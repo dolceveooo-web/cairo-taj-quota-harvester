@@ -1,1 +1,13 @@
-
+{
+  "name": "github-cloud-harvester",
+  "version": "1.0.0",
+  "description": "Lightweight cloud harvester",
+  "main": "harvester.js",
+  "scripts": {
+    "start": "node harvester.js"
+  },
+  "dependencies": {
+    "playwright-chromium": "^1.40.0",
+    "node-fetch": "^2.7.0"
+  }
+}
