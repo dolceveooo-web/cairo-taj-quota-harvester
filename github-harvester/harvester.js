@@ -42,7 +42,9 @@ async function harvestQuota() {
     console.log('2️⃣ Username...');
     console.log('  Username length:', WE_USERNAME ? WE_USERNAME.length : 'undefined');
     await page.waitForSelector('#login_loginid_input_01', { timeout: 20000 });
-    await page.fill('#login_loginid_input_01', WE_USERNAME);
+    await page.focus('#login_loginid_input_01');
+    await sleep(200);
+    await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
     await sleep(randomDelay(800, 1200));
     const usernameValue = await page.inputValue('#login_loginid_input_01');
     console.log('  Username filled:', usernameValue.length, 'chars');
@@ -61,7 +63,9 @@ async function harvestQuota() {
     
     console.log('4️⃣ Password...');
     console.log('  Password length:', WE_PASSWORD ? WE_PASSWORD.length : 'undefined');
-    await page.fill('#login_password_input_01', WE_PASSWORD);
+    await page.focus('#login_password_input_01');
+    await sleep(200);
+    await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
     await sleep(randomDelay(1000, 1500));
     const passwordValue = await page.inputValue('#login_password_input_01');
     console.log('  Password filled:', passwordValue.length, 'chars');
@@ -72,7 +76,7 @@ async function harvestQuota() {
       const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
       if (btn) btn.click();
     });
-    await sleep(randomDelay(15000, 18000));
+    await sleep(6000);
     
     const url = page.url();
     console.log('  URL:', url);
