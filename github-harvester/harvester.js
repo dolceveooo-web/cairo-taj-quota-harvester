@@ -34,52 +34,86 @@ async function harvestQuota() {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
     console.log('1️⃣ Navigating to WE Egypt login...');
-    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 60000 });
+    await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+    
+    await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
+    console.log('  Login form ready');
     
     console.log('2️⃣ Filling username...');
-    await page.waitForSelector('input[name="username"]', { timeout: 30000 });
-    await page.type('input[name="username"]', WE_USERNAME);
+    await page.focus('#login_loginid_input_01');
+    await new Promise(r => setTimeout(r, 200));
+    await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 20 });
+    await new Promise(r => setTimeout(r, 800));
     
     console.log('3️⃣ Selecting service type (Internet)...');
-    await page.waitForSelector('select[name="serviceType"]', { timeout: 10000 });
-    await page.select('select[name="serviceType"]', 'Internet');
+    const dropdown = await page.$('.ant-select-selector, .ant-select');
+    if (!dropdown) throw new Error('Service Type dropdown not found');
+    await dropdown.click();
+    await new Promise(r => setTimeout(r, 800));
+    
+    const clicked = await page.evaluate(() => {
+      const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
+      const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
+      if (internet) { internet.click(); return internet.textContent.trim(); }
+      return null;
+    });
+    console.log('  Selected: ' + (clicked || 'NOT FOUND'));
+    await new Promise(r => setTimeout(r, 500));
     
     console.log('4️⃣ Filling password...');
-    await page.waitForSelector('input[name="password"]', { timeout: 10000 });
-    await page.type('input[name="password"]', WE_PASSWORD);
+    await page.focus('#login_password_input_01');
+    await new Promise(r => setTimeout(r, 200));
+    await page.type('#login_password_input_01', WE_PASSWORD, { delay: 20 });
+    await new Promise(r => setTimeout(r, 300));
     
     console.log('5️⃣ Submitting login...');
-    await Promise.all([
-      page.click('button[type="submit"]'),
-      page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 60000 })
-    ]);
+    await page.evaluate(() => {
+      const btns = Array.from(document.querySelectorAll('button'));
+      const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+      if (btn) btn.click();
+    });
+    await new Promise(r => setTimeout(r, 6000));
+    
+    const urlAfter = page.url();
+    console.log('  URL: ' + urlAfter);
+    if (urlAfter.includes('#/login')) throw new Error('Login failed — check credentials');
+    console.log('  ✓ Login successful');
     
     console.log('6️⃣ Extracting quota data...');
-    await page.waitForTimeout(3000);
+    await new Promise(r => setTimeout(r, 2000));
     
     const data = await page.evaluate(() => {
-      const getText = (label) => {
-        const spans = Array.from(document.querySelectorAll('span'));
-        const labelSpan = spans.find(s => s.textContent.includes(label));
-        if (!labelSpan) return null;
-        const valueSpan = labelSpan.nextElementSibling || labelSpan.parentElement.nextElementSibling;
-        return valueSpan ? valueSpan.textContent.trim() : null;
-      };
-      
-      return {
-        remaining: getText('Remaining'),
-        used: getText('Used'),
-        balance: getText('Current Balance'),
-        planName: getText('Plan Name') || getText('Package')
-      };
+      const spans = Array.from(document.querySelectorAll('span, div'));
+      let remaining = null, used = null, balance = null, plan = null;
+
+      for (let i = 0; i < spans.length; i++) {
+        const t = spans[i].innerText?.trim();
+        if (!t) continue;
+        if (t === 'Remaining' && spans[i-1]) remaining = parseFloat(spans[i-1].innerText);
+        if (t === 'Used' && spans[i-1]) used = parseFloat(spans[i-1].innerText);
+        if (t === 'Current Balance' && spans[i+1]) balance = parseFloat(spans[i+1].innerText);
+        if (t && t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
+      }
+
+      const totalMatch = plan && plan.match(/(\d+)GB/);
+      const total = totalMatch ? parseFloat(totalMatch[1]) : (remaining && used ? remaining + used : 0);
+
+      return { remaining, used, total, balance, plan };
     });
     
     console.log('7️⃣ Data extracted:', data);
+    console.log('  Remaining: ' + data.remaining + ' GB');
+    console.log('  Used: ' + data.used + ' GB');
+    console.log('  Total: ' + data.total + ' GB');
+    console.log('  Balance: ' + data.balance + ' EGP');
+    console.log('  Plan: ' + data.plan);
     
-    const remaining = parseFloat(data.remaining) || 0;
-    const used = parseFloat(data.used) || 0;
-    const total = remaining + used;
-    const balance = parseFloat(data.balance) || 0;
+    if (!data.remaining) throw new Error('Could not extract quota from page');
+    
+    const remaining = data.remaining;
+    const used = data.used;
+    const total = data.total;
+    const balance = data.balance;
     
     const quotaData = {
       '104': {
@@ -87,7 +121,7 @@ async function harvestQuota() {
         used: `${used.toFixed(2)} GB`,
         total: `${total.toFixed(2)} GB`,
         balance: `${balance.toFixed(2)} EGP`,
-        planName: data.planName || 'Unknown Plan',
+        planName: data.plan || 'Unknown Plan',
         updatedAt: new Date().toISOString(),
         updatedBy: 'GitHub Cloud Harvester ⚡',
         status: 'success'
