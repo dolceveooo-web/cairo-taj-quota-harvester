@@ -813,7 +813,46 @@ async function harvestQuota() {
       }
     ], 'FIRESTORE', 20000);
 
-    console.log('  ✓ Uploaded!\n');
+    console.log('  ✓ Uploaded to quota_latest!\n');
+
+    // ══════════════════════════════════════
+    console.log('STEP 8: LEDGER (quota_history)');
+    // ══════════════════════════════════════
+    const historyFields = {
+      timestamp: { stringValue: now },
+      user: { stringValue: 'GitHub Cloud ⚡' },
+      notes: { stringValue: '' },
+      dokki: { mapValue: { fields: {
+        quota: { doubleValue: null },
+        balance: { doubleValue: null }
+      }}},
+      '104': { mapValue: { fields: {
+        quota: { doubleValue: data.remaining },
+        balance: { doubleValue: data.balance }
+      }}},
+      gezira: { mapValue: { fields: {
+        quota: { doubleValue: null },
+        balance: { doubleValue: null }
+      }}}
+    };
+
+    await tryMethods([
+      async () => {
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_history?key=${FIREBASE_API_KEY}`;
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: historyFields }) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        console.log('    POST to quota_history');
+      },
+      async () => {
+        await sleep(2000);
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_history?key=${FIREBASE_API_KEY}`;
+        const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: historyFields }) });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        console.log('    retry POST to quota_history');
+      }
+    ], 'LEDGER', 20000);
+
+    console.log('  ✓ Ledger updated!\n');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
