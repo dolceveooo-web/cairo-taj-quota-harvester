@@ -1,4 +1,4 @@
-﻿const puppeteer = require('puppeteer-extra');
+const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fetch = require('node-fetch');
 
@@ -30,10 +30,10 @@ async function tryMethods(methods, stepName, timeout) {
     try {
       console.log(`  [${i+1}/${methods.length}]`);
       const result = await withTimeout(methods[i](), timeout, `${stepName} M${i+1}`);
-      console.log(`  أ¢إ“â€œ Method ${i+1} SUCCESS`);
+      console.log(`  ✓ Method ${i+1} SUCCESS`);
       return result;
     } catch (e) {
-      console.log(`  أ¢إ“â€” Method ${i+1} FAILED: ${e.message}`);
+      console.log(`  ✗ Method ${i+1} FAILED: ${e.message}`);
       if (i === methods.length - 1) throw new Error(`${stepName} ALL METHODS FAILED`);
       await sleep(500);
     }
@@ -41,7 +41,7 @@ async function tryMethods(methods, stepName, timeout) {
 }
 
 async function harvestQuota() {
-  console.log('ظ‹ع؛ع‘â‚¬ STARTING...\n');
+  console.log('🚀 STARTING...\n');
   let browser, page;
 
   try {
@@ -89,9 +89,9 @@ async function harvestQuota() {
       await dialog.accept();
     });
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ══════════════════════════════════════
     console.log('STEP 1: NAVIGATE');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ══════════════════════════════════════
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
@@ -154,46 +154,46 @@ async function harvestQuota() {
 
     // Human-like pause before typing
     const delay1 = randomDelay(5000, 8000);
-    console.log(`  أ¢عˆآ³ Human delay: ${delay1}ms`);
+    console.log('  [HUMAN] pause', delay1, 'ms');
     await sleep(delay1);
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
         await page.focus('#login_loginid_input_01');
-        await sleep(3000); // 3s pause before first keystroke
+        await sleep(3000);
         await page.type('#login_loginid_input_01', WE_USERNAME, { delay: randomDelay(100, 200) });
-        await sleep(3000); // 3s pause after last keystroke
+        await sleep(3000);
         console.log('    focus + type (local harvester method)');
       },
       // M2: $ find + click + type
       async () => {
         const el = await page.$('#login_loginid_input_01');
         if (!el) throw new Error('ID not found');
-        await el.click(); await sleep(300);
-        await el.type(WE_USERNAME, { delay: 30 });
-        await sleep(500);
+        await el.click(); await sleep(3000);
+        await el.type(WE_USERNAME, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    $ find + click + type');
       },
       // M3: .ant-input class
       async () => {
         const els = await page.$$('.ant-input');
         if (!els.length) throw new Error('no .ant-input');
-        await els[0].click(); await sleep(300);
-        await els[0].type(WE_USERNAME, { delay: 30 });
-        await sleep(500);
+        await els[0].click(); await sleep(3000);
+        await els[0].type(WE_USERNAME, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    .ant-input class');
       },
       // M4: input[type=text]
       async () => {
         const els = await page.$$('input[type="text"]');
         if (!els.length) throw new Error('no text inputs');
-        await els[0].click(); await sleep(300);
-        await els[0].type(WE_USERNAME, { delay: 30 });
-        await sleep(500);
+        await els[0].click(); await sleep(3000);
+        await els[0].type(WE_USERNAME, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    input[type=text]');
       },
       // M5: DOM evaluate with React-compatible events
@@ -205,7 +205,6 @@ async function harvestQuota() {
                       document.querySelector('input:not([type="password"]):not([type="hidden"])');
           if (!inp) return false;
           inp.focus();
-          // Use native setter to bypass React controlled input
           const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
           nativeSetter.call(inp, u);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
@@ -213,10 +212,10 @@ async function harvestQuota() {
           return true;
         }, WE_USERNAME);
         if (!ok) throw new Error('DOM set failed');
-        await sleep(500);
+        await sleep(3000);
         console.log('    DOM native setter + React events');
       },
-      // M6: loop all inputs, log each, use first visible non-password
+      // M6: loop all inputs
       async () => {
         const all = await page.$$('input');
         if (!all.length) throw new Error('no inputs at all');
@@ -226,9 +225,9 @@ async function harvestQuota() {
           }));
           console.log(`    input[${i}] id="${info.id}" type="${info.type}" visible=${info.visible}`);
           if (info.type !== 'password' && info.type !== 'hidden' && info.visible) {
-            await all[i].click(); await sleep(300);
-            await all[i].type(WE_USERNAME, { delay: 30 });
-            await sleep(500);
+            await all[i].click(); await sleep(3000);
+            await all[i].type(WE_USERNAME, { delay: randomDelay(100, 200) });
+            await sleep(3000);
             console.log(`    used input[${i}]`);
             return;
           }
@@ -238,28 +237,28 @@ async function harvestQuota() {
       // M7: keyboard Tab from body
       async () => {
         await page.focus('body');
-        await sleep(300);
+        await sleep(3000);
         await page.keyboard.press('Tab');
-        await sleep(500);
-        await page.keyboard.type(WE_USERNAME, { delay: 30 });
-        await sleep(500);
+        await sleep(1000);
+        await page.keyboard.type(WE_USERNAME, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    Tab from body + type');
       },
       // M8: click first input regardless of type
       async () => {
         await page.click('input');
-        await sleep(300);
-        await page.keyboard.type(WE_USERNAME, { delay: 30 });
-        await sleep(500);
+        await sleep(3000);
+        await page.keyboard.type(WE_USERNAME, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    click first input + keyboard');
       }
-    ], 'SERVICE NUMBER', 35000);
+    ], 'SERVICE NUMBER', 60000);
 
-    console.log('  أ¢إ“â€œ Service number entered\n');
+    console.log('  [OK] Service number entered\n');
 
-    // Human-like pause after typing username
+    // Human-like pause after username
     const delay2 = randomDelay(5000, 8000);
-    console.log(`  أ¢عˆآ³ Human delay: ${delay2}ms`);
+    console.log('  [HUMAN] pause', delay2, 'ms');
     await sleep(delay2);
 
     // Wait for dropdown to appear after username triggers React re-render
@@ -267,7 +266,7 @@ async function harvestQuota() {
     await withTimeout(
       page.waitForFunction(() => !!document.querySelector('.ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
       16000, 'dropdown appearance'
-    ).catch(() => console.log('  أ¢ع‘آ  Dropdown wait timed out, proceeding anyway'));
+    ).catch(() => console.log('  [WARN] Dropdown wait timed out, proceeding anyway'));
     await sleep(1000);
 
     // Log dropdown state
@@ -279,11 +278,10 @@ async function harvestQuota() {
     })), 5000, 'dropdown diag').catch(() => null);
     console.log('  Dropdown state:', JSON.stringify(dropdownDiag));
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     console.log('STEP 3: DROPDOWN');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     await tryMethods([
-      // M1: Wait for dropdown to exist then click
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
@@ -301,7 +299,6 @@ async function harvestQuota() {
         console.log('    waitForFunction + click, selected:', clicked);
         await sleep(500);
       },
-      // M2: waitForSelector then click
       async () => {
         await page.waitForSelector('.ant-select-selector', { timeout: 10000 });
         await sleep(500);
@@ -315,7 +312,6 @@ async function harvestQuota() {
         console.log('    waitForSelector + click');
         await sleep(500);
       },
-      // M3: click + arrow + enter
       async () => {
         await page.waitForSelector('.ant-select', { timeout: 10000 });
         await page.click('.ant-select');
@@ -325,7 +321,6 @@ async function harvestQuota() {
         await page.keyboard.press('Enter');
         console.log('    click + arrow + enter');
       },
-      // M4: evaluate click + broad search
       async () => {
         await sleep(2000);
         await page.evaluate(() => { document.querySelector('.ant-select-selector')?.click(); });
@@ -337,7 +332,6 @@ async function harvestQuota() {
         });
         console.log('    evaluate click + broad search');
       },
-      // M5: generic selector + type
       async () => {
         await sleep(2000);
         const els = await page.$$('[class*="select"]');
@@ -349,43 +343,41 @@ async function harvestQuota() {
       }
     ], 'DROPDOWN', 20000);
 
-    console.log('  أ¢إ“â€œ Dropdown done\n');
+    console.log('  [OK] Dropdown done\n');
 
     // Human-like pause before password
     const delay3 = randomDelay(5000, 8000);
-    console.log(`  أ¢عˆآ³ Human delay: ${delay3}ms`);
+    console.log('  [HUMAN] pause', delay3, 'ms');
     await sleep(delay3);
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     console.log('STEP 4: PASSWORD');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     await sleep(500);
     await tryMethods([
-      // M1: EXACT same as working local harvester
       async () => {
         await page.focus('#login_password_input_01');
-        await sleep(3000); // 3s pause before first keystroke
+        await sleep(3000);
         await page.type('#login_password_input_01', WE_PASSWORD, { delay: randomDelay(100, 200) });
-        await sleep(3000); // 3s pause after last keystroke
+        await sleep(3000);
         console.log('    focus + type (local harvester method)');
       },
-      // M2: $ find + click + type
       async () => {
         const el = await page.$('#login_password_input_01');
         if (!el) throw new Error('ID not found');
-        await el.click(); await sleep(300);
-        await el.type(WE_PASSWORD, { delay: 30 });
+        await el.click(); await sleep(3000);
+        await el.type(WE_PASSWORD, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    $ find + click + type');
       },
-      // M3: input[type=password]
       async () => {
         const els = await page.$$('input[type="password"]');
         if (!els.length) throw new Error('no password inputs');
-        await els[0].click(); await sleep(300);
-        await els[0].type(WE_PASSWORD, { delay: 30 });
+        await els[0].click(); await sleep(3000);
+        await els[0].type(WE_PASSWORD, { delay: randomDelay(100, 200) });
+        await sleep(3000);
         console.log('    input[type=password]');
       },
-      // M4: DOM native setter
       async () => {
         const ok = await page.evaluate((p) => {
           const inp = document.querySelector('#login_password_input_01') ||
@@ -400,34 +392,33 @@ async function harvestQuota() {
         if (!ok) throw new Error('DOM set failed');
         console.log('    DOM native setter');
       },
-      // M5: loop find password
       async () => {
         const all = await page.$$('input');
         for (let i = 0; i < all.length; i++) {
           const type = await all[i].evaluate(el => el.type);
           if (type === 'password') {
-            await all[i].click(); await sleep(300);
-            await all[i].type(WE_PASSWORD, { delay: 30 });
+            await all[i].click(); await sleep(3000);
+            await all[i].type(WE_PASSWORD, { delay: randomDelay(100, 200) });
+            await sleep(3000);
             console.log(`    loop found password at input[${i}]`);
             return;
           }
         }
         throw new Error('no password input in loop');
       }
-    ], 'PASSWORD', 30000);
+    ], 'PASSWORD', 60000);
 
-    console.log('  أ¢إ“â€œ Password done\n');
+    console.log('  [OK] Password done\n');
 
-    // Human-like pause before clicking login
+    // Human-like pause before submit
     const delay4 = randomDelay(5000, 8000);
-    console.log(`  أ¢عˆآ³ Human delay: ${delay4}ms`);
+    console.log('  [HUMAN] pause', delay4, 'ms');
     await sleep(delay4);
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     console.log('STEP 5: SUBMIT');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
     await tryMethods([
-      // M1: EXACT same as working local harvester
       async () => {
         await page.evaluate(() => {
           const btns = Array.from(document.querySelectorAll('button'));
@@ -460,20 +451,18 @@ async function harvestQuota() {
       }
     ], 'SUBMIT', 20000);
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
-    // POST-SUBMIT: Wait for either navigation or captcha (race)
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
+    // POST-SUBMIT: Race - URL change vs captcha modal
+    // ======================================
     console.log('  Waiting for login result...');
-    let postLoginState = 'unknown'; // 'navigated' | 'captcha' | 'unknown'
+    let postLoginState = 'unknown';
     for (let tick = 0; tick < 20; tick++) {
-      // Check 1: Did the URL change away from login?
       const currentUrl = page.url();
       if (!currentUrl.includes('login')) {
         postLoginState = 'navigated';
-        console.log('  أ¢إ“â€œ URL changed to:', currentUrl);
+        console.log('  [OK] URL changed to:', currentUrl);
         break;
       }
-      // Check 2: Did a captcha modal appear?
       const hasCaptcha = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
         const text = document.body.innerText.toLowerCase();
@@ -481,10 +470,10 @@ async function harvestQuota() {
       });
       if (hasCaptcha) {
         postLoginState = 'captcha';
-        console.log('  ظ‹ع؛â€‌ع¯ Captcha modal detected at', tick+1, 'seconds');
+        console.log('  [CAPTCHA] Modal detected at', tick + 1, 'seconds');
         break;
       }
-      if (tick % 3 === 0) console.log(`  Waiting... (${tick+1}s)`);
+      if (tick % 3 === 0) console.log('  Waiting...', tick + 1, 's');
       await sleep(1000);
     }
 
@@ -492,24 +481,22 @@ async function harvestQuota() {
       throw new Error('Still on login page - no navigation or captcha after 20s');
     }
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
-    // CAPTCHA HANDLER (only if captcha was detected)
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ======================================
+    // CAPTCHA ENGINE v4 (only if captcha was detected)
+    // ======================================
     if (postLoginState === 'captcha') {
-      console.log('  ظ‹ع؛â€‌ع¯ CAPTCHA DETECTED - Ultimate Engine v3...');
+      console.log('  [CAPTCHA] Ultimate Engine v4 starting...\n');
 
-      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Get the captcha image element (largest img inside modal) أ¢â€‌â‚¬أ¢â€‌â‚¬
+      // HELPER: Find the captcha image (largest img inside modal)
       async function findCaptchaImg() {
         return await page.evaluateHandle(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return null;
           const imgs = Array.from(modal.querySelectorAll('img'));
-          // Sort by area descending أ¢â‚¬â€‌ captcha is always the largest image in the modal
           imgs.sort((a, b) => {
             const aR = a.getBoundingClientRect(), bR = b.getBoundingClientRect();
             return (bR.width * bR.height) - (aR.width * aR.height);
           });
-          // Return the largest one that's reasonably captcha-sized
           for (const img of imgs) {
             const r = img.getBoundingClientRect();
             if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
@@ -518,7 +505,7 @@ async function harvestQuota() {
         });
       }
 
-      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Canvas preprocessing with 3 adaptive filters أ¢â€‌â‚¬أ¢â€‌â‚¬
+      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
@@ -535,18 +522,17 @@ async function harvestQuota() {
             const r = d[i], g = d[i+1], b = d[i+2];
             let keep = false;
             if (f === 'red') {
-              // Red isolation: keep dark reddish pixels
-              keep = r > 100 && g < 130 && b < 130 && (r - g) > 20;
+              // Red isolation: keep reddish pixels, kill blue line + gray bg
+              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
             } else if (f === 'dark') {
-              // Dark text extraction: keep anything dark
+              // Dark text: keep anything with low luminance
               const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = lum < 120;
+              keep = lum < 140;
             } else {
-              // High contrast: keep saturated/dark pixels
+              // Saturated: keep colored pixels, remove gray/white
               const max = Math.max(r,g,b), min = Math.min(r,g,b);
               const sat = max === 0 ? 0 : (max - min) / max;
-              const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = (sat > 0.25 && lum < 200) || lum < 80;
+              keep = sat > 0.3 && r > g;
             }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
           }
@@ -555,40 +541,35 @@ async function harvestQuota() {
         }, imgHandle, filter);
       }
 
-      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: OCR via Tesseract أ¢â€‌â‚¬أ¢â€‌â‚¬
+      // HELPER: OCR with dual PSM modes
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
-        // Try PSM 8 (single word) أ¢â‚¬â€‌ best for captchas
         const r1 = await Tesseract.recognize(imageData, 'eng', {
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
           tessedit_pageseg_mode: '8'
         });
         const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
         if (t1) results.push(t1);
-        // Try PSM 7 (single line) as fallback
         if (t1.length !== 5) {
           const r2 = await Tesseract.recognize(imageData, 'eng', {
             tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
             tessedit_pageseg_mode: '7'
           });
           const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-          if (t2) results.push(t2);
+          if (t2 && t2 !== t1) results.push(t2);
         }
         return results;
       }
 
-      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Type answer into the modal input and click OK أ¢â€‌â‚¬أ¢â€‌â‚¬
+      // HELPER: Submit captcha answer into modal input
       async function submitAnswer(answer) {
-        console.log('    أ¢â€ â€™ Submitting:', answer);
+        console.log('    -> Submitting:', answer);
         const ok = await page.evaluate((ans) => {
-          // Find the modal
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return false;
-          // Find the input INSIDE the modal (class: ant-input, no ID)
           const inp = modal.querySelector('input.ant-input, input[type="text"]');
           if (!inp) return false;
-          // Clear and set value using React-compatible native setter
           inp.focus();
           inp.click();
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -597,14 +578,12 @@ async function harvestQuota() {
           setter.call(inp, ans);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-          // Click the OK / primary button inside the modal
           const btn = modal.querySelector('button.ant-btn-primary, button');
           if (btn) btn.click();
           return true;
         }, answer);
         if (!ok) {
-          // Keyboard fallback
-          console.log('    أ¢â€ â€™ Modal input not found, using keyboard fallback');
+          console.log('    -> Keyboard fallback');
           await page.keyboard.press('Tab');
           await sleep(200);
           await page.keyboard.type(answer, { delay: 40 });
@@ -615,61 +594,81 @@ async function harvestQuota() {
         return !page.url().includes('login');
       }
 
-      // أ¢â€‌â‚¬أ¢â€‌â‚¬ HELPER: Refresh captcha and wait for new image أ¢â€‌â‚¬أ¢â€‌â‚¬
-      // -- HELPER: Wait for captcha image after wrong answer/refresh --
-      async function refreshCaptchaImg() {
-        console.log('    Waiting for new captcha image...');
-        await sleep(2000);
-
-        // Try clicking refresh icon if it exists
-        await page.evaluate(() => {
+      // HELPER: Check if modal is still open
+      async function isModalOpen() {
+        return await page.evaluate(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-          if (!modal) return;
-          const icon = modal.querySelector('.anticon-sync, .anticon-reload, [class*="refresh"], [class*="reload"]');
-          if (icon) icon.click();
-          else {
-            const imgs = modal.querySelectorAll('img');
-            if (imgs.length > 1) imgs[1].click();
-          }
+          return !!modal;
         });
-        await sleep(3000);
+      }
 
-        // Poll until valid loaded image appears in modal
-        for (let w = 0; w < 10; w++) {
-          const found = await page.evaluate(() => {
+      // HELPER: Re-trigger captcha by clicking Login again
+      async function retriggerLogin() {
+        console.log('    -> Modal closed, re-clicking Login...');
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button'));
+          const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+          if (btn) btn.click();
+        });
+        // Wait for captcha modal to reappear
+        for (let w = 0; w < 15; w++) {
+          await sleep(1000);
+          const hasModal = await page.evaluate(() => {
             const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-            if (!modal) return false;
-            const imgs = Array.from(modal.querySelectorAll('img'));
-            for (const img of imgs) {
-              const r = img.getBoundingClientRect();
-              if (r.width > 80 && r.height > 25 && img.complete && img.naturalWidth > 0) return true;
-            }
-            return false;
+            return !!modal;
           });
-          if (found) {
-            console.log('    New captcha ready');
+          if (hasModal) {
+            console.log('    -> New captcha modal appeared');
+            await sleep(2000);
             return true;
           }
-          await sleep(1000);
+          // Check if we navigated away (login succeeded without captcha this time)
+          if (!page.url().includes('login')) return false;
         }
-        console.log('    Warning: no valid image found after waiting');
         return false;
       }
 
-      // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
-      // MAIN CAPTCHA SOLVING LOOP (12 rounds)
-      // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+      // MAIN CAPTCHA LOOP (12 rounds)
       const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
-        console.log(`\n  أ¢â€‌â‚¬أ¢â€‌â‚¬ Round ${round}/12 أ¢â€‌â‚¬أ¢â€‌â‚¬`);
+        console.log('  -- Round', round, '/ 12 --');
 
-        // Refresh captcha on rounds 2+
-        if (round > 1) await refreshCaptchaImg();
+        // On rounds 2+: check modal state and refresh/retrigger
+        if (round > 1) {
+          const modalOpen = await isModalOpen();
+          if (!modalOpen) {
+            // Modal was closed after wrong answer -> need to re-click Login
+            const gotNewCaptcha = await retriggerLogin();
+            if (!gotNewCaptcha) {
+              // Check if we actually navigated away (success!)
+              if (!page.url().includes('login')) {
+                captchaSolved = true;
+                console.log('  [OK] Navigated away during retrigger - login succeeded!');
+                break;
+              }
+              console.log('    ! Could not get new captcha modal');
+              continue;
+            }
+          } else {
+            // Modal still open - try clicking refresh icon
+            await page.evaluate(() => {
+              const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+              if (!modal) return;
+              const icon = modal.querySelector('.anticon-sync, .anticon-reload, [class*="refresh"], [class*="reload"]');
+              if (icon) icon.click();
+              else {
+                const imgs = modal.querySelectorAll('img');
+                if (imgs.length > 1) imgs[1].click();
+              }
+            });
+            await sleep(3000);
+          }
+        }
 
         try {
-          // Wait for modal + image to be ready (up to 8s)
+          // Wait for valid captcha image (up to 8s)
           let imgHandle = null;
           for (let retry = 0; retry < 8; retry++) {
             imgHandle = await findCaptchaImg();
@@ -678,7 +677,7 @@ async function harvestQuota() {
             imgHandle = null;
             await sleep(1000);
           }
-          if (!imgHandle) { console.log('    ! No valid captcha image after 8s wait'); continue; }
+          if (!imgHandle) { console.log('    ! No valid captcha image after 8s'); continue; }
 
           // Try each filter until we get a 5-char result
           let bestAnswer = '';
@@ -687,29 +686,27 @@ async function harvestQuota() {
             if (!b64) continue;
             const texts = await ocrRead(b64);
             const match = texts.find(t => t.length === 5);
-            console.log(`    [${filter}] OCR: ${JSON.stringify(texts)} ${match ? 'أ¢إ“â€œ' : 'أ¢إ“â€”'}`);
+            console.log('    [' + filter + '] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
             if (match) { bestAnswer = match; break; }
           }
 
           if (!bestAnswer) {
-            console.log('    ! No 5-char result from any filter, refreshing...');
+            console.log('    ! No 5-char result from any filter');
             continue;
           }
 
-          // Submit the answer
           captchaSolved = await submitAnswer(bestAnswer);
           if (captchaSolved) {
-            console.log(`  ظ‹ع؛عکâ€° CAPTCHA SOLVED on round ${round}!`);
+            console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
-            console.log(`    أ¢إ“â€” Wrong answer "${bestAnswer}", trying again...`);
+            console.log('    X Wrong answer "' + bestAnswer + '", next round...');
           }
         } catch (e) {
-          console.log(`    ! Error: ${e.message}`);
+          console.log('    ! Error:', e.message);
         }
       }
 
       if (!captchaSolved) {
-        // Cancel and retry whole login
         await page.evaluate(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           const btn = modal?.querySelector('button');
@@ -719,11 +716,15 @@ async function harvestQuota() {
         throw new Error('Captcha unsolvable after 12 rounds - retrying login');
       }
     }
-    console.log('  أ¢إ“â€œ Login successful!\n');
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ══════════════════════════════════════
+    console.log('STEP 2: SERVICE NUMBER (USERNAME)');
+    // ══════════════════════════════════════
+    console.log('  ✓ Login successful!\n');
+
+    // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ══════════════════════════════════════
     const data = await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
@@ -770,9 +771,9 @@ async function harvestQuota() {
     console.log('  Balance:', data.balance, 'EGP');
     console.log('  Plan:', data.plan, '\n');
 
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ══════════════════════════════════════
     console.log('STEP 7: FIRESTORE');
-    // أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯أ¢â€¢ع¯
+    // ══════════════════════════════════════
     const now = new Date().toISOString();
     const fields = {
       '104': { mapValue: { fields: {
@@ -782,7 +783,7 @@ async function harvestQuota() {
         used:     { doubleValue: data.used },
         plan:     { stringValue: data.plan },
         updatedAt: { stringValue: now },
-        updatedBy: { stringValue: 'GitHub Cloud أ¢ع‘طŒ' },
+        updatedBy: { stringValue: 'GitHub Cloud ⚡' },
         status:   { stringValue: 'success' }
       }}},
       lastUpdate: { stringValue: now }
@@ -812,13 +813,13 @@ async function harvestQuota() {
       }
     ], 'FIRESTORE', 20000);
 
-    console.log('  أ¢إ“â€œ Uploaded!\n');
-    console.log('أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾');
-    console.log('أ¢إ“â€¦ أ¢إ“â€¦ أ¢إ“â€¦  SUCCESS  أ¢إ“â€¦ أ¢إ“â€¦ أ¢إ“â€¦');
-    console.log('أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾أ¢â€‌ظ¾');
+    console.log('  ✓ Uploaded!\n');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   } catch (error) {
-    console.error('\nأ¢â€Œإ’ ERROR:', error.message);
+    console.error('\n❌ ERROR:', error.message);
     if (page) {
       try {
         const ss = await withTimeout(page.screenshot({ encoding: 'base64' }), 5000, 'screenshot');
@@ -840,9 +841,9 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`\n${'أ¢â€¢ع¯'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'أ¢â€¢ع¯'.repeat(50)}\n`);
+      console.log(`\n${'═'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'═'.repeat(50)}\n`);
       await harvestQuota();
-      console.log('\nظ‹ع؛عکâ€° COMPLETE!');
+      console.log('\n🎉 COMPLETE!');
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
@@ -851,7 +852,7 @@ async function main() {
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
         await sleep(d);
       } else {
-        console.error('\nظ‹ع؛â€™â‚¬ ALL ATTEMPTS FAILED');
+        console.error('\n💀 ALL ATTEMPTS FAILED');
         process.exit(1);
       }
     }
