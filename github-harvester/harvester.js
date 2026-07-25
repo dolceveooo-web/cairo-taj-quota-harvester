@@ -823,16 +823,16 @@ async function harvestQuota() {
       user: { stringValue: 'GitHub Cloud ⚡' },
       notes: { stringValue: '' },
       dokki: { mapValue: { fields: {
-        quota: { doubleValue: null },
-        balance: { doubleValue: null }
+        quota: { nullValue: null },
+        balance: { nullValue: null }
       }}},
       '104': { mapValue: { fields: {
         quota: { doubleValue: data.remaining },
         balance: { doubleValue: data.balance }
       }}},
       gezira: { mapValue: { fields: {
-        quota: { doubleValue: null },
-        balance: { doubleValue: null }
+        quota: { nullValue: null },
+        balance: { nullValue: null }
       }}}
     };
 
