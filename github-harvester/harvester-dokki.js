@@ -644,42 +644,46 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (12 rounds)
+      // WE behavior: wrong answer -> modal closes -> NEW modal appears immediately
+      // So we just wait for modal to appear at start of each round, no re-clicking needed
       const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
         console.log('  -- Round', round, '/ 12 --');
 
-        // On rounds 2+: check modal state and refresh/retrigger
+        // Wait for captcha modal to be present (it appears automatically after wrong answer)
         if (round > 1) {
-          const modalOpen = await isModalOpen();
-          if (!modalOpen) {
-            // Modal was closed after wrong answer -> need to re-click Login
-            const gotNewCaptcha = await retriggerLogin();
-            if (!gotNewCaptcha) {
-              // Check if we actually navigated away (success!)
-              if (!page.url().includes('login')) {
-                captchaSolved = true;
-                console.log('  [OK] Navigated away during retrigger - login succeeded!');
-                break;
-              }
-              console.log('    ! Could not get new captcha modal');
-              continue;
+          let modalFound = false;
+          for (let w = 0; w < 10; w++) {
+            await sleep(1000);
+            const isOpen = await isModalOpen();
+            if (isOpen) { modalFound = true; break; }
+            // Check if login succeeded (navigated away)
+            if (!page.url().includes('login')) {
+              captchaSolved = true;
+              console.log('  [OK] Navigated away - login succeeded!');
+              break;
             }
-          } else {
-            // Modal still open - try clicking refresh icon
+          }
+          if (captchaSolved) break;
+          if (!modalFound) {
+            // Modal didn't appear - try clicking Login to trigger it
+            console.log('    Modal not found, re-clicking Login...');
             await page.evaluate(() => {
-              const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-              if (!modal) return;
-              const icon = modal.querySelector('.anticon-sync, .anticon-reload, [class*="refresh"], [class*="reload"]');
-              if (icon) icon.click();
-              else {
-                const imgs = modal.querySelectorAll('img');
-                if (imgs.length > 1) imgs[1].click();
-              }
+              const btns = Array.from(document.querySelectorAll('button'));
+              const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+              if (btn) btn.click();
             });
             await sleep(3000);
+            const nowOpen = await isModalOpen();
+            if (!nowOpen) {
+              if (!page.url().includes('login')) { captchaSolved = true; break; }
+              console.log('    ! Still no modal, skipping round');
+              continue;
+            }
           }
+          await sleep(1000); // Brief wait for new captcha image to load
         }
 
         try {
@@ -709,32 +713,15 @@ async function harvestQuota() {
             console.log('    ! No 5-char result from any filter');
             continue;
           }
-
-          // Try original case first, then uppercase, then lowercase
-          // WE captcha is case-sensitive so all 3 variants are worth trying
-          const variants = [bestAnswer];
-          if (bestAnswer !== bestAnswer.toUpperCase()) variants.push(bestAnswer.toUpperCase());
-          if (bestAnswer !== bestAnswer.toLowerCase()) variants.push(bestAnswer.toLowerCase());
-
-          let solved = false;
-          for (const variant of variants) {
-            console.log('    -> Trying variant:', variant);
-            solved = await submitAnswer(variant);
-            if (solved) { captchaSolved = true; break; }
-            // If modal closed after wrong answer, need to retrigger before next variant
-            const stillOpen = await isModalOpen();
-            if (!stillOpen && !page.url().includes('login')) { captchaSolved = true; break; }
-            if (!stillOpen) {
-              // Re-trigger for next variant
-              const gotNew = await retriggerLogin();
-              if (!gotNew) { if (!page.url().includes('login')) captchaSolved = true; break; }
-            }
-          }
-
+          // One attempt per round — cycle through case variants across rounds
+          const variantIndex = (round - 1) % 3;
+          const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
+          console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
+          captchaSolved = await submitAnswer(attempt);
           if (captchaSolved) {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
-            console.log('    X All variants wrong, next round...');
+            console.log('    X Wrong answer "' + attempt + '", next round...');
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
@@ -762,97 +749,107 @@ async function harvestQuota() {
     console.log('STEP 5.5: LINE SWITCHER (Dokki)');
     // ══════════════════════════════════════
     console.log('  Switching to line 0237600094...');
+
+    // After clicking 0237600094, WE portal does a full page reload that may briefly
+    // pass through #/login before settling on #/accountoverview with the new line data.
+    // Strategy: click the option, then wait patiently for accountoverview to load
+    // with data that is different from the previous line's data.
+
     await tryMethods([
-      // M1: Snapshot current data → click dropdown → select 0237600094 → wait for DATA to change
+      // M1: Click dropdown option, handle navigation, wait for stable data page
       async () => {
+        // Make sure we're on accountoverview first
         await page.waitForFunction(() => {
-          const t = document.body.innerText.toLowerCase();
-          return t.includes('currently managing') || t.includes('remaining');
+          const t = document.body.innerText;
+          return t.includes('currently managing') || t.includes('Remaining');
         }, { timeout: 15000 });
         await sleep(2000);
-        console.log('    Current URL:', page.url());
+        console.log('    Pre-switch URL:', page.url());
 
-        // Snapshot current remaining value to detect when page reloads with new account
-        const prevRem = await page.evaluate(() =>
-          document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-        );
-        console.log('    Previous remaining:', prevRem);
-
-        // Click the dropdown to open it
+        // Click the dropdown
         const dropdowns = await page.$$('.ant-select-selector, .ant-select');
         if (!dropdowns.length) throw new Error('Dropdown not found');
         await dropdowns[0].click();
-        await sleep(1500);
+        await sleep(2000);
 
-        // Click option containing 0237600094
-        const selected = await page.evaluate(() => {
+        // Click the 0237600094 option
+        const clicked = await page.evaluate(() => {
           const opts = Array.from(document.querySelectorAll(
-            '.ant-select-item-option-content, .ant-select-item, option, li'
+            '.ant-select-item-option-content, .ant-select-item, li, option'
           ));
           const t = opts.find(o => o.textContent && o.textContent.includes('0237600094'));
           if (t) { t.click(); return t.textContent.trim(); }
           return null;
         });
-        if (!selected) throw new Error('Option 0237600094 not found in dropdown');
-        console.log('    Clicked option:', selected);
+        if (!clicked) throw new Error('Option 0237600094 not found');
+        console.log('    Clicked:', clicked);
 
-        // Wait up to 20s for page data to change (confirms new account loaded)
+        // Now wait up to 25 seconds for page to settle on accountoverview with new data
+        // The page may go through login briefly - that's OK, just keep waiting
+        for (let w = 0; w < 25; w++) {
+          await sleep(1000);
+          const url = page.url();
+          console.log('    (' + (w+1) + 's) URL:', url);
+          // Check if we're on accountoverview with the correct line
+          if (url.includes('accountoverview') || url.includes('account')) {
+            const pageCheck = await page.evaluate(() => {
+              const text = document.body.innerText;
+              const hasRemaining = text.includes('Remaining');
+              const has094 = text.includes('0237600094');
+              const rem = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || '';
+              return { hasRemaining, has094, rem };
+            }).catch(() => ({ hasRemaining: false, has094: false, rem: '' }));
+            console.log('    Page: hasRemaining=' + pageCheck.hasRemaining + ' has094=' + pageCheck.has094 + ' rem=' + pageCheck.rem);
+            if (pageCheck.hasRemaining) {
+              console.log('    Data page ready!');
+              await sleep(2000);
+              return;
+            }
+          }
+        }
+        throw new Error('Page did not settle after line switch in 25s');
+      },
+      // M2: Use page.select() then wait for page to settle
+      async () => {
+        await sleep(2000);
+        // Navigate directly to the account page for 0237600094 if possible
+        // First try select by value
+        await page.select('select', '0237600094').catch(() => {});
+        // Wait for page to go through its reload cycle
         for (let w = 0; w < 20; w++) {
           await sleep(1000);
-          const newRem = await page.evaluate(() =>
-            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-          );
-          console.log('    (' + (w+1) + 's) remaining now:', newRem);
-          if (newRem && newRem !== prevRem) {
-            console.log('    Page reloaded with new account data!');
-            await sleep(2000);
-            return;
-          }
-          if (w > 5 && !prevRem) {
-            const hasData = await page.evaluate(() => document.body.innerText.includes('Remaining'));
+          const url = page.url();
+          if (url.includes('accountoverview') || url.includes('account')) {
+            const hasData = await page.evaluate(() =>
+              document.body.innerText.includes('Remaining')
+            ).catch(() => false);
             if (hasData) { await sleep(2000); return; }
           }
         }
-        throw new Error('Data did not change after selecting 0237600094 - may have got same account');
+        console.log('    select by value + wait');
       },
-      // M2: Select by value then wait for data change
+      // M3: Click via evaluate + wait for settled state
       async () => {
         await sleep(2000);
-        const prevRem = await page.evaluate(() =>
-          document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-        );
-        await page.select('select', '0237600094').catch(() => {});
-        for (let w = 0; w < 15; w++) {
-          await sleep(1000);
-          const newRem = await page.evaluate(() =>
-            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-          );
-          if (newRem && newRem !== prevRem) { await sleep(2000); return; }
-        }
-        console.log('    select by value');
-      },
-      // M3: Broad evaluate search
-      async () => {
-        await sleep(2000);
-        const prevRem = await page.evaluate(() =>
-          document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-        );
         await page.evaluate(() => {
-          for (const el of document.querySelectorAll('div, li, option, span')) {
+          for (const el of document.querySelectorAll('div, li, option, span, a')) {
             if (el.textContent && el.textContent.includes('0237600094')) { el.click(); return; }
           }
         });
-        for (let w = 0; w < 15; w++) {
+        for (let w = 0; w < 20; w++) {
           await sleep(1000);
-          const newRem = await page.evaluate(() =>
-            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-          );
-          if (newRem && newRem !== prevRem) { await sleep(2000); return; }
+          const url = page.url();
+          if (url.includes('accountoverview') || url.includes('account')) {
+            const hasData = await page.evaluate(() =>
+              document.body.innerText.includes('Remaining')
+            ).catch(() => false);
+            if (hasData) { await sleep(2000); return; }
+          }
         }
-        console.log('    broad evaluate search');
+        console.log('    broad click + wait');
       }
-    ], 'LINE SWITCHER', 35000);
-    console.log('  Switched to 0237600094');
+    ], 'LINE SWITCHER', 40000);
+    console.log('  Switched to 0237600094, URL:', page.url());
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
