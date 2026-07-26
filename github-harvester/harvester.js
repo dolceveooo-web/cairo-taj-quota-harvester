@@ -20,6 +20,13 @@ function randomDelay(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function stripNum(str) {
+  if (!str) return null;
+  const cleaned = String(str).replace(/,/g, '').replace(/[^\d.\-]/g, '').trim();
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? null : n;
+}
+
 async function withTimeout(promise, ms, name) {
   return Promise.race([
     promise,
@@ -737,34 +744,48 @@ async function harvestQuota() {
           for (let i = 0; i < spans.length; i++) {
             const t = spans[i].innerText?.trim();
             if (!t) continue;
-            if (t === 'Remaining' && spans[i-1]) remaining = parseFloat(spans[i-1].innerText);
-            if (t === 'Used' && spans[i-1]) used = parseFloat(spans[i-1].innerText);
-            if (t === 'Current Balance' && spans[i+1]) balance = parseFloat(spans[i+1].innerText);
+            if (t === 'Remaining' && spans[i-1]) remaining = spans[i-1].innerText;
+            if (t === 'Used' && spans[i-1]) used = spans[i-1].innerText;
+            if (t === 'Current Balance' && spans[i+1]) balance = spans[i+1].innerText;
             if (t && t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
-          if (!remaining && remaining !== 0) throw new Error('no data');
-          return { remaining, used: used||0, balance: balance||0, plan: plan||'Unknown' };
+          if (!remaining) throw new Error('no data');
+          return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
         });
-        console.log('    local harvester span method');
-        return result;
+        // Apply stripNum AFTER evaluate (handles comma-formatted numbers like 1,334.9)
+        const parsed = {
+          remaining: stripNum(result.remaining),
+          used: stripNum(result.used) || 0,
+          balance: stripNum(result.balance) || 0,
+          plan: result.plan
+        };
+        if (!parsed.remaining && parsed.remaining !== 0) throw new Error('no data after stripNum');
+        console.log('    local harvester span method + stripNum');
+        return parsed;
       },
       async () => {
         await sleep(5000);
         return await page.evaluate(() => {
           const text = document.body.innerText;
-          const r = text.match(/Remaining[^\d]*(\d+\.?\d*)/i);
-          const u = text.match(/Used[^\d]*(\d+\.?\d*)/i);
-          const b = text.match(/Balance[^\d]*(\d+\.?\d*)/i);
+          const r = text.match(/Remaining[\s\S]*?([\d,]+\.?\d*)\s*GB/i);
+          const u = text.match(/Used[\s\S]*?([\d,]+\.?\d*)\s*GB/i);
+          const b = text.match(/Balance[\s\S]*?([\d,]+\.?\d*)/i);
           if (!r) throw new Error('no data');
-          return { remaining: parseFloat(r[1]), used: parseFloat(u?.[1]||0), balance: parseFloat(b?.[1]||0), plan: 'Unknown' };
-        });
+          // Return raw strings so stripNum can handle commas
+          return { remaining: r[1], used: u?.[1]||'0', balance: b?.[1]||'0', plan: 'Unknown' };
+        }).then(raw => ({
+          remaining: stripNum(raw.remaining),
+          used: stripNum(raw.used) || 0,
+          balance: stripNum(raw.balance) || 0,
+          plan: raw.plan
+        }));
       },
       async () => {
         await sleep(8000);
         const html = await withTimeout(page.content(), 8000, 'page.content');
-        const r = html.match(/Remaining[^\d]*(\d+\.?\d*)/i);
+        const r = html.match(/Remaining[\s\S]*?([\d,]+\.?\d*)\s*GB/i);
         if (!r) throw new Error('no data in html');
-        return { remaining: parseFloat(r[1]), used: 0, balance: 0, plan: 'Unknown' };
+        return { remaining: stripNum(r[1]), used: 0, balance: 0, plan: 'Unknown' };
       }
     ], 'EXTRACT', 30000);
 
