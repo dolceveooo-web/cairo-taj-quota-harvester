@@ -784,7 +784,8 @@ async function harvestQuota() {
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
     const data = await tryMethods([
-      // M1: EXACT same as working local harvester
+      // M1: Number-before-label scan (matches current WE portal layout)
+      // Page shows: "1,391.34 Remaining" and "108.66 Used" (number BEFORE label)
       async () => {
         await sleep(2000);
         const result = await page.evaluate(() => {
@@ -792,16 +793,31 @@ async function harvestQuota() {
           let remaining = null, used = null, balance = null, plan = null;
           for (let i = 0; i < spans.length; i++) {
             const t = spans[i].innerText?.trim();
-            if (!t) continue;
-            if (t === 'Remaining' && spans[i-1]) remaining = spans[i-1].innerText;
-            if (t === 'Used' && spans[i-1]) used = spans[i-1].innerText;
+            if (!t || t.length > 200) continue; // skip huge containers
+            // Number before label: look for "Remaining" label where the NEXT sibling contains the number
+            // OR look for a span containing only a decimal number that has a sibling with "Remaining"
+            if (t === 'Remaining' && spans[i-1]) {
+              const candidate = spans[i-1].innerText?.trim();
+              // Only accept if it looks like a number (not a phone number like 0237483361)
+              // Valid: "1,391.34" or "108.26" — reject strings starting with 0 and long integers
+              const num = parseFloat(candidate?.replace(/,/g, ''));
+              if (!isNaN(num) && num > 1 && !(candidate?.startsWith('0') && candidate?.length > 6)) {
+                remaining = candidate;
+              }
+            }
+            if (t === 'Used' && spans[i-1]) {
+              const candidate = spans[i-1].innerText?.trim();
+              const num = parseFloat(candidate?.replace(/,/g, ''));
+              if (!isNaN(num) && !(candidate?.startsWith('0') && candidate?.length > 6)) {
+                used = candidate;
+              }
+            }
             if (t === 'Current Balance' && spans[i+1]) balance = spans[i+1].innerText;
             if (t && t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
-          if (!remaining) throw new Error('no data');
+          if (!remaining) throw new Error('no remaining data found');
           return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
         });
-        // Apply stripNum AFTER evaluate (handles comma-formatted numbers like 1,334.9)
         const parsed = {
           remaining: stripNum(result.remaining),
           used: stripNum(result.used) || 0,
@@ -809,32 +825,57 @@ async function harvestQuota() {
           plan: result.plan
         };
         if (!parsed.remaining && parsed.remaining !== 0) throw new Error('no data after stripNum');
-        console.log('    local harvester span method + stripNum');
+        console.log('    M1 number-before-label scan + phone number filter');
         return parsed;
       },
+      // M2: Full page text regex — number BEFORE the label word
+      // Matches: "1,391.34 Remaining" and "7,610.23 EGP" for balance
       async () => {
         await sleep(5000);
-        return await page.evaluate(() => {
+        const result = await page.evaluate(() => {
           const text = document.body.innerText;
-          const r = text.match(/Remaining[\s\S]*?([\d,]+\.?\d*)\s*GB/i);
-          const u = text.match(/Used[\s\S]*?([\d,]+\.?\d*)\s*GB/i);
-          const b = text.match(/Balance[\s\S]*?([\d,]+\.?\d*)/i);
-          if (!r) throw new Error('no data');
-          // Return raw strings so stripNum can handle commas
-          return { remaining: r[1], used: u?.[1]||'0', balance: b?.[1]||'0', plan: 'Unknown' };
-        }).then(raw => ({
-          remaining: stripNum(raw.remaining),
-          used: stripNum(raw.used) || 0,
-          balance: stripNum(raw.balance) || 0,
-          plan: raw.plan
-        }));
+          // Match number immediately before "Remaining" or "Used"
+          const r = text.match(/([\d,]+\.?\d*)\s*\n?\s*Remaining/i);
+          const u = text.match(/([\d,]+\.?\d*)\s*\n?\s*Used/i);
+          // Balance: look for "X,XXX.XX EGP" pattern OR "Current Balance" followed by number
+          const b = text.match(/Current Balance[\s\S]{0,30}?([\d,]+\.?\d+)\s*EGP/i)
+                 || text.match(/([\d,]+\.?\d+)\s*EGP/i);
+          // Plan: line containing "GB" and "Speed"
+          const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
+          if (!r) throw new Error('no remaining in text');
+          return {
+            remaining: r[1],
+            used: u?.[1] || '0',
+            balance: b?.[1] || '0',
+            plan: p?.[0]?.trim() || 'Unknown'
+          };
+        });
+        const parsed = {
+          remaining: stripNum(result.remaining),
+          used: stripNum(result.used) || 0,
+          balance: stripNum(result.balance) || 0,
+          plan: result.plan
+        };
+        if (!parsed.remaining) throw new Error('no data after stripNum M2');
+        console.log('    M2 regex number-before-label + EGP balance');
+        return parsed;
       },
+      // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
         const html = await withTimeout(page.content(), 8000, 'page.content');
-        const r = html.match(/Remaining[\s\S]*?([\d,]+\.?\d*)\s*GB/i);
+        // Look for large GB numbers (>10) preceded by comma-formatted decimal
+        const r = html.match(/([\d,]+\.?\d*)\s*<\/[^>]+>\s*<[^>]+>[^<]*Remaining/i)
+                 || html.match(/>([\d,]+\.?\d+)<[^>]*>\s*<[^>]*>[^<]*Remaining/i);
+        const u = html.match(/([\d,]+\.?\d*)\s*<\/[^>]+>\s*<[^>]+>[^<]*\bUsed\b/i);
+        const b = html.match(/>([\d,]+\.?\d+)\s*EGP</i);
         if (!r) throw new Error('no data in html');
-        return { remaining: stripNum(r[1]), used: 0, balance: 0, plan: 'Unknown' };
+        return {
+          remaining: stripNum(r[1]),
+          used: stripNum(u?.[1]) || 0,
+          balance: stripNum(b?.[1]) || 0,
+          plan: 'Unknown'
+        };
       }
     ], 'EXTRACT', 30000);
 
