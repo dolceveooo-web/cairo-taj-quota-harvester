@@ -644,48 +644,45 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (12 rounds)
-      // WE behavior: wrong answer -> modal closes -> NEW modal appears immediately
-      // So we just wait for modal to appear at start of each round, no re-clicking needed
       const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
         console.log('  -- Round', round, '/ 12 --');
 
-        // Wait for captcha modal to be present (it appears automatically after wrong answer)
+        // On rounds 2+: check modal state and refresh/retrigger
         if (round > 1) {
-          let modalFound = false;
-          for (let w = 0; w < 10; w++) {
-            await sleep(1000);
-            const isOpen = await isModalOpen();
-            if (isOpen) { modalFound = true; break; }
-            // Check if login succeeded (navigated away)
-            if (!page.url().includes('login')) {
-              captchaSolved = true;
-              console.log('  [OK] Navigated away - login succeeded!');
-              break;
-            }
-          }
-          if (captchaSolved) break;
-          if (!modalFound) {
-            // Modal didn't appear - try clicking Login to trigger it
-            console.log('    Modal not found, re-clicking Login...');
-            await page.evaluate(() => {
-              const btns = Array.from(document.querySelectorAll('button'));
-              const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
-              if (btn) btn.click();
-            });
-            await sleep(3000);
-            const nowOpen = await isModalOpen();
-            if (!nowOpen) {
-              if (!page.url().includes('login')) { captchaSolved = true; break; }
-              console.log('    ! Still no modal, skipping round');
+          const modalOpen = await isModalOpen();
+          if (!modalOpen) {
+            // Modal was closed after wrong answer -> need to re-click Login
+            const gotNewCaptcha = await retriggerLogin();
+            if (!gotNewCaptcha) {
+              // Check if we actually navigated away (success!)
+              if (!page.url().includes('login')) {
+                captchaSolved = true;
+                console.log('  [OK] Navigated away during retrigger - login succeeded!');
+                break;
+              }
+              console.log('    ! Could not get new captcha modal');
               continue;
             }
+          } else {
+            // Modal still open - try clicking refresh icon
+            await page.evaluate(() => {
+              const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+              if (!modal) return;
+              const icon = modal.querySelector('.anticon-sync, .anticon-reload, [class*="refresh"], [class*="reload"]');
+              if (icon) icon.click();
+              else {
+                const imgs = modal.querySelectorAll('img');
+                if (imgs.length > 1) imgs[1].click();
+              }
+            });
+            await sleep(3000);
           }
-          await sleep(1000); // Brief wait for new captcha image to load
         }
 
+        try {
           // Wait for valid captcha image (up to 8s)
           let imgHandle = null;
           for (let retry = 0; retry < 8; retry++) {
@@ -712,16 +709,32 @@ async function harvestQuota() {
             console.log('    ! No 5-char result from any filter');
             continue;
           }
-          // One attempt per round — cycle through case variants across rounds
-          const variantIndex = (round - 1) % 3;
-          const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
-          console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
-          captchaSolved = await submitAnswer(attempt);
+
+          // Try original case first, then uppercase, then lowercase
+          // WE captcha is case-sensitive so all 3 variants are worth trying
+          const variants = [bestAnswer];
+          if (bestAnswer !== bestAnswer.toUpperCase()) variants.push(bestAnswer.toUpperCase());
+          if (bestAnswer !== bestAnswer.toLowerCase()) variants.push(bestAnswer.toLowerCase());
+
+          let solved = false;
+          for (const variant of variants) {
+            console.log('    -> Trying variant:', variant);
+            solved = await submitAnswer(variant);
+            if (solved) { captchaSolved = true; break; }
+            // If modal closed after wrong answer, need to retrigger before next variant
+            const stillOpen = await isModalOpen();
+            if (!stillOpen && !page.url().includes('login')) { captchaSolved = true; break; }
+            if (!stillOpen) {
+              // Re-trigger for next variant
+              const gotNew = await retriggerLogin();
+              if (!gotNew) { if (!page.url().includes('login')) captchaSolved = true; break; }
+            }
+          }
+
           if (captchaSolved) {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
-            console.log('    X Wrong answer "' + attempt + '", next round...');
-          }
+            console.log('    X All variants wrong, next round...');
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
