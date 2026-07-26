@@ -8,6 +8,8 @@ const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
 const WE_USERNAME = process.env.WE_USERNAME;
 const WE_PASSWORD = process.env.WE_PASSWORD;
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const MAX_RETRIES = 3;
 
 async function sleep(ms) {
@@ -853,6 +855,43 @@ async function harvestQuota() {
     ], 'LEDGER', 20000);
 
     console.log('  ✓ Ledger updated!\n');
+
+    // ══════════════════════════════════════
+    console.log('STEP 9: TELEGRAM');
+    // ══════════════════════════════════════
+    try {
+      const date = new Date().toLocaleString('en-GB', {
+        timeZone: 'Africa/Cairo',
+        day: '2-digit', month: 'short', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+      });
+      const msg = [
+        '📡 *Cairo Taj — Line 104 Harvest*',
+        '',
+        `✅ Quota Remaining: *${data.remaining.toFixed(2)} GB*`,
+        `📉 Used: *${data.used.toFixed(2)} GB*`,
+        `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
+        `📋 Plan: ${data.plan}`,
+        `🕐 ${date}`,
+        `🤖 GitHub Cloud ⚡`
+      ].join('\n');
+
+      const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+      const tgRes = await fetch(tgUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: TELEGRAM_CHAT_ID,
+          text: msg,
+          parse_mode: 'Markdown'
+        })
+      });
+      if (!tgRes.ok) throw new Error(`Telegram HTTP ${tgRes.status}`);
+      console.log('  ✓ Telegram sent!\n');
+    } catch (e) {
+      // Telegram failure should NOT fail the whole harvest
+      console.log('  ⚠ Telegram failed (non-critical):', e.message);
+    }
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
