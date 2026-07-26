@@ -734,39 +734,78 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
+
+    // DIAGNOSTIC: dump page text around key labels so we can see exact layout
+    const extractDiag = await withTimeout(page.evaluate(() => {
+      const text = document.body.innerText;
+      // Find "Remaining" in text and show 60 chars before and after
+      const rIdx = text.indexOf('Remaining');
+      const uIdx = text.indexOf('Used');
+      const bIdx = text.indexOf('Current Balance');
+      return {
+        aroundRemaining: rIdx >= 0 ? JSON.stringify(text.slice(Math.max(0, rIdx-60), rIdx+20)) : 'NOT FOUND',
+        aroundUsed: uIdx >= 0 ? JSON.stringify(text.slice(Math.max(0, uIdx-60), uIdx+20)) : 'NOT FOUND',
+        aroundBalance: bIdx >= 0 ? JSON.stringify(text.slice(Math.max(0, bIdx), bIdx+40)) : 'NOT FOUND',
+      };
+    }), 10000, 'extractDiag').catch(e => ({ error: e.message }));
+    console.log('  [DIAG] aroundRemaining:', extractDiag.aroundRemaining);
+    console.log('  [DIAG] aroundUsed:', extractDiag.aroundUsed);
+    console.log('  [DIAG] aroundBalance:', extractDiag.aroundBalance);
     const data = await tryMethods([
-      // M1: Number-before-label scan (matches current WE portal layout)
-      // Page shows: "1,391.34 Remaining" and "108.66 Used" (number BEFORE label)
+      // M1: Walk ALL spans/divs, find ones whose text is ONLY a decimal number,
+      // then check if a nearby sibling contains "Remaining" or "Used"
       async () => {
         await sleep(2000);
         const result = await page.evaluate(() => {
-          const spans = Array.from(document.querySelectorAll('span, div'));
+          const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
+
+          // Helper: is this text a plain decimal number (with optional commas)?
+          function isNumericText(t) {
+            if (!t) return false;
+            const stripped = t.replace(/,/g, '').trim();
+            return /^\d+(\.\d+)?$/.test(stripped) && !stripped.startsWith('0237') && !stripped.startsWith('023');
+          }
+
           for (let i = 0; i < spans.length; i++) {
             const t = spans[i].innerText?.trim();
-            if (!t || t.length > 200) continue; // skip huge containers
-            // Number before label: look for "Remaining" label where the NEXT sibling contains the number
-            // OR look for a span containing only a decimal number that has a sibling with "Remaining"
-            if (t === 'Remaining' && spans[i-1]) {
-              const candidate = spans[i-1].innerText?.trim();
-              // Only accept if it looks like a number (not a phone number like 0237483361)
-              // Valid: "1,391.34" or "108.26" — reject strings starting with 0 and long integers
-              const num = parseFloat(candidate?.replace(/,/g, ''));
-              if (!isNaN(num) && num > 1 && !(candidate?.startsWith('0') && candidate?.length > 6)) {
-                remaining = candidate;
+            if (!t || t.length > 100) continue;
+
+            // Find "Remaining" label — check i-1, i-2 for the number
+            if (t === 'Remaining') {
+              for (let back = 1; back <= 3; back++) {
+                if (i - back >= 0) {
+                  const candidate = spans[i - back].innerText?.trim();
+                  if (isNumericText(candidate)) { remaining = candidate; break; }
+                }
               }
             }
-            if (t === 'Used' && spans[i-1]) {
-              const candidate = spans[i-1].innerText?.trim();
-              const num = parseFloat(candidate?.replace(/,/g, ''));
-              if (!isNaN(num) && !(candidate?.startsWith('0') && candidate?.length > 6)) {
-                used = candidate;
+
+            // Find "Used" label — check i-1, i-2 for the number
+            if (t === 'Used') {
+              for (let back = 1; back <= 3; back++) {
+                if (i - back >= 0) {
+                  const candidate = spans[i - back].innerText?.trim();
+                  if (isNumericText(candidate)) { used = candidate; break; }
+                }
               }
             }
-            if (t === 'Current Balance' && spans[i+1]) balance = spans[i+1].innerText;
-            if (t && t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
+
+            // Balance: "Current Balance" label then look forward for EGP number
+            if (t === 'Current Balance') {
+              for (let fwd = 1; fwd <= 5; fwd++) {
+                if (i + fwd < spans.length) {
+                  const candidate = spans[i + fwd].innerText?.trim();
+                  if (isNumericText(candidate)) { balance = candidate; break; }
+                }
+              }
+            }
+
+            // Plan: contains "GB" and "Speed"
+            if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
-          if (!remaining) throw new Error('no remaining data found');
+
+          if (!remaining) throw new Error('no remaining found');
           return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
         });
         const parsed = {
@@ -776,24 +815,21 @@ async function harvestQuota() {
           plan: result.plan
         };
         if (!parsed.remaining && parsed.remaining !== 0) throw new Error('no data after stripNum');
-        console.log('    M1 number-before-label scan + phone number filter');
+        console.log('    M1 numeric-only sibling scan');
         return parsed;
       },
-      // M2: Full page text regex — number BEFORE the label word
-      // Matches: "1,391.34 Remaining" and "7,610.23 EGP" for balance
+      // M2: innerText of whole page, regex number BEFORE label word (on same or adjacent line)
       async () => {
         await sleep(5000);
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
-          // Match number immediately before "Remaining" or "Used"
-          const r = text.match(/([\d,]+\.?\d*)\s*\n?\s*Remaining/i);
-          const u = text.match(/([\d,]+\.?\d*)\s*\n?\s*Used/i);
-          // Balance: look for "X,XXX.XX EGP" pattern OR "Current Balance" followed by number
-          const b = text.match(/Current Balance[\s\S]{0,30}?([\d,]+\.?\d+)\s*EGP/i)
+          // The page renders: "1,391.34\nRemaining" or "1,391.34 Remaining"
+          const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
+          const u = text.match(/([\d,]+\.?\d+)\s*\n?\s*Used/i);
+          const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)
                  || text.match(/([\d,]+\.?\d+)\s*EGP/i);
-          // Plan: line containing "GB" and "Speed"
           const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
-          if (!r) throw new Error('no remaining in text');
+          if (!r) throw new Error('no remaining in page text');
           return {
             remaining: r[1],
             used: u?.[1] || '0',
@@ -807,18 +843,16 @@ async function harvestQuota() {
           balance: stripNum(result.balance) || 0,
           plan: result.plan
         };
-        if (!parsed.remaining) throw new Error('no data after stripNum M2');
-        console.log('    M2 regex number-before-label + EGP balance');
+        if (!parsed.remaining) throw new Error('no data M2');
+        console.log('    M2 page text regex number-before-label');
         return parsed;
       },
       // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
         const html = await withTimeout(page.content(), 8000, 'page.content');
-        // Look for large GB numbers (>10) preceded by comma-formatted decimal
-        const r = html.match(/([\d,]+\.?\d*)\s*<\/[^>]+>\s*<[^>]+>[^<]*Remaining/i)
-                 || html.match(/>([\d,]+\.?\d+)<[^>]*>\s*<[^>]*>[^<]*Remaining/i);
-        const u = html.match(/([\d,]+\.?\d*)\s*<\/[^>]+>\s*<[^>]+>[^<]*\bUsed\b/i);
+        const r = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Remaining/i);
+        const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
         const b = html.match(/>([\d,]+\.?\d+)\s*EGP</i);
         if (!r) throw new Error('no data in html');
         return {
