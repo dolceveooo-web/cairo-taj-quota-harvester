@@ -847,21 +847,6 @@ async function harvestQuota() {
       }
     ], 'LINE SWITCHER', 35000);
     console.log('  Switched to 0237600094');
-            if (el.textContent && el.textContent.includes('0237600094')) { el.click(); return; }
-          }
-        });
-        for (let w = 0; w < 15; w++) {
-          await sleep(1000);
-          const newRem = await page.evaluate(() =>
-            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
-          );
-          if (newRem && newRem !== prevRem) { await sleep(2000); return; }
-        }
-        console.log('    broad evaluate search');
-      }
-    ], 'LINE SWITCHER', 35000);
-    console.log('  Switched to 0237600094');
-
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
