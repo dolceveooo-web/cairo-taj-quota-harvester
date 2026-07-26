@@ -751,88 +751,116 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('  ✓ Login successful!\n');
 
+
     // ══════════════════════════════════════
     console.log('STEP 5.5: LINE SWITCHER (Dokki)');
     // ══════════════════════════════════════
     console.log('  Switching to line 0237600094...');
     await tryMethods([
-      // M1: Wait for "you are currently managing" → click dropdown → select line → wait for accountoverview
+      // M1: Snapshot current data → click dropdown → select 0237600094 → wait for DATA to change
       async () => {
         await page.waitForFunction(() => {
-          const text = document.body.innerText.toLowerCase();
-          return text.includes('you are currently managing') || text.includes('currently managing');
+          const t = document.body.innerText.toLowerCase();
+          return t.includes('currently managing') || t.includes('remaining');
         }, { timeout: 15000 });
         await sleep(2000);
-        // Log current URL and page state for diagnostics
         console.log('    Current URL:', page.url());
-        const pageText = await page.evaluate(() => document.body.innerText.slice(0, 200));
-        console.log('    Page text preview:', pageText.replace(/\n/g, ' ').slice(0, 150));
-        // Try to find and click the dropdown
-        const dropdown = await page.$('select, .ant-select-selector, .ant-select');
-        if (!dropdown) throw new Error('Line switcher dropdown not found');
-        await dropdown.click();
+
+        // Snapshot current remaining value to detect when page reloads with new account
+        const prevRem = await page.evaluate(() =>
+          document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+        );
+        console.log('    Previous remaining:', prevRem);
+
+        // Click the dropdown to open it
+        const dropdowns = await page.$$('.ant-select-selector, .ant-select');
+        if (!dropdowns.length) throw new Error('Dropdown not found');
+        await dropdowns[0].click();
         await sleep(1500);
-        // Find and click the target line option
+
+        // Click option containing 0237600094
         const selected = await page.evaluate(() => {
-          const options = Array.from(document.querySelectorAll('option, .ant-select-item, .ant-select-item-option, li, div'));
-          const target = options.find(o => o.textContent?.includes('0237600094'));
-          if (target) { target.click(); return target.textContent?.trim(); }
+          const opts = Array.from(document.querySelectorAll(
+            '.ant-select-item-option-content, .ant-select-item, option, li'
+          ));
+          const t = opts.find(o => o.textContent && o.textContent.includes('0237600094'));
+          if (t) { t.click(); return t.textContent.trim(); }
           return null;
         });
-        if (!selected) throw new Error('Line 0237600094 not found in options');
-        console.log('    Selected:', selected);
-        // Wait for navigation to account overview (up to 15 seconds)
-        for (let w = 0; w < 15; w++) {
+        if (!selected) throw new Error('Option 0237600094 not found in dropdown');
+        console.log('    Clicked option:', selected);
+
+        // Wait up to 20s for page data to change (confirms new account loaded)
+        for (let w = 0; w < 20; w++) {
           await sleep(1000);
-          const url = page.url();
-          console.log('    Waiting for data page... URL:', url, '(' + (w+1) + 's)');
-          if (url.includes('accountoverview') || url.includes('account')) {
-            console.log('    ✓ Navigated to data page');
-            await sleep(3000); // Extra wait for page content to load
+          const newRem = await page.evaluate(() =>
+            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+          );
+          console.log('    (' + (w+1) + 's) remaining now:', newRem);
+          if (newRem && newRem !== prevRem) {
+            console.log('    Page reloaded with new account data!');
+            await sleep(2000);
             return;
           }
+          if (w > 5 && !prevRem) {
+            const hasData = await page.evaluate(() => document.body.innerText.includes('Remaining'));
+            if (hasData) { await sleep(2000); return; }
+          }
         }
-        // If still not on accountoverview, check if we have data anyway
-        const hasData = await page.evaluate(() => document.body.innerText.includes('Remaining'));
-        if (hasData) { console.log('    ✓ Data found on current page'); return; }
-        throw new Error('Did not navigate to data page after line switch');
+        throw new Error('Data did not change after selecting 0237600094 - may have got same account');
       },
-      // M2: Direct select by value then wait for navigation
+      // M2: Select by value then wait for data change
       async () => {
         await sleep(2000);
+        const prevRem = await page.evaluate(() =>
+          document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+        );
         await page.select('select', '0237600094').catch(() => {});
         for (let w = 0; w < 15; w++) {
           await sleep(1000);
-          const url = page.url();
-          if (url.includes('accountoverview') || url.includes('account')) {
-            await sleep(3000);
-            return;
-          }
+          const newRem = await page.evaluate(() =>
+            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+          );
+          if (newRem && newRem !== prevRem) { await sleep(2000); return; }
         }
         console.log('    select by value');
       },
-      // M3: Broad click search then wait
+      // M3: Broad evaluate search
       async () => {
         await sleep(2000);
-        await page.click('[class*="select"]').catch(() => {});
-        await sleep(1000);
+        const prevRem = await page.evaluate(() =>
+          document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+        );
         await page.evaluate(() => {
-          for (let el of document.querySelectorAll('div, li, option, span')) {
-            if (el.textContent?.includes('0237600094')) { el.click(); return; }
+          for (const el of document.querySelectorAll('div, li, option, span')) {
+            if (el.textContent && el.textContent.includes('0237600094')) { el.click(); return; }
           }
         });
         for (let w = 0; w < 15; w++) {
           await sleep(1000);
-          const url = page.url();
-          if (url.includes('accountoverview') || url.includes('account')) {
-            await sleep(3000);
-            return;
-          }
+          const newRem = await page.evaluate(() =>
+            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+          );
+          if (newRem && newRem !== prevRem) { await sleep(2000); return; }
         }
-        console.log('    broad search + click');
+        console.log('    broad evaluate search');
       }
-    ], 'LINE SWITCHER', 30000);
-    console.log('  ✓ Switched to 0237600094, URL:', page.url(), '\n');
+    ], 'LINE SWITCHER', 35000);
+    console.log('  Switched to 0237600094');
+            if (el.textContent && el.textContent.includes('0237600094')) { el.click(); return; }
+          }
+        });
+        for (let w = 0; w < 15; w++) {
+          await sleep(1000);
+          const newRem = await page.evaluate(() =>
+            document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || ''
+          );
+          if (newRem && newRem !== prevRem) { await sleep(2000); return; }
+        }
+        console.log('    broad evaluate search');
+      }
+    ], 'LINE SWITCHER', 35000);
+    console.log('  Switched to 0237600094');
 
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
