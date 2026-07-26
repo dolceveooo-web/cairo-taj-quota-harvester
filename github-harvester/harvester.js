@@ -587,13 +587,7 @@ async function harvestQuota() {
           setter.call(inp, ans);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-          // Find the OK/confirm button — NOT Cancel. Look for button with ok/confirm text,
-          // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
-          const allBtns = Array.from(modal.querySelectorAll('button'));
-          const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
-                      modal.querySelector('button.ant-btn-primary') ||
-                      allBtns[allBtns.length - 1]; // last button = OK
-          console.log('[captcha] Clicking button:', btn ? btn.textContent.trim() : 'none', 'of', allBtns.length, 'buttons');
+          const btn = modal.querySelector('button.ant-btn-primary, button');
           if (btn) btn.click();
           return true;
         }, answer);
