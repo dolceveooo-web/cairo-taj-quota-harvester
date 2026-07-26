@@ -704,11 +704,31 @@ async function harvestQuota() {
             continue;
           }
 
-          captchaSolved = await submitAnswer(bestAnswer);
+          // Try original case first, then uppercase, then lowercase
+          // WE captcha is case-sensitive so all 3 variants are worth trying
+          const variants = [bestAnswer];
+          if (bestAnswer !== bestAnswer.toUpperCase()) variants.push(bestAnswer.toUpperCase());
+          if (bestAnswer !== bestAnswer.toLowerCase()) variants.push(bestAnswer.toLowerCase());
+
+          let solved = false;
+          for (const variant of variants) {
+            console.log('    -> Trying variant:', variant);
+            solved = await submitAnswer(variant);
+            if (solved) { captchaSolved = true; break; }
+            // If modal closed after wrong answer, need to retrigger before next variant
+            const stillOpen = await isModalOpen();
+            if (!stillOpen && !page.url().includes('login')) { captchaSolved = true; break; }
+            if (!stillOpen) {
+              // Re-trigger for next variant
+              const gotNew = await retriggerLogin();
+              if (!gotNew) { if (!page.url().includes('login')) captchaSolved = true; break; }
+            }
+          }
+
           if (captchaSolved) {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
-            console.log('    X Wrong answer "' + bestAnswer + '", next round...');
+            console.log('    X All variants wrong, next round...');
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
@@ -736,49 +756,83 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('  Switching to line 0237600094...');
     await tryMethods([
-      // M1: Wait for dropdown + click + select option
+      // M1: Wait for "you are currently managing" → click dropdown → select line → wait for accountoverview
       async () => {
         await page.waitForFunction(() => {
           const text = document.body.innerText.toLowerCase();
-          return text.includes('you are currently managing');
-        }, { timeout: 10000 });
+          return text.includes('you are currently managing') || text.includes('currently managing');
+        }, { timeout: 15000 });
         await sleep(2000);
-        const dropdown = await page.$('select, .ant-select');
+        // Log current URL and page state for diagnostics
+        console.log('    Current URL:', page.url());
+        const pageText = await page.evaluate(() => document.body.innerText.slice(0, 200));
+        console.log('    Page text preview:', pageText.replace(/\n/g, ' ').slice(0, 150));
+        // Try to find and click the dropdown
+        const dropdown = await page.$('select, .ant-select-selector, .ant-select');
         if (!dropdown) throw new Error('Line switcher dropdown not found');
         await dropdown.click();
-        await sleep(1000);
+        await sleep(1500);
+        // Find and click the target line option
         const selected = await page.evaluate(() => {
-          const options = Array.from(document.querySelectorAll('option, .ant-select-item'));
-          const target = options.find(o => o.textContent.includes('0237600094'));
-          if (target) { target.click(); return true; }
-          return false;
+          const options = Array.from(document.querySelectorAll('option, .ant-select-item, .ant-select-item-option, li, div'));
+          const target = options.find(o => o.textContent?.includes('0237600094'));
+          if (target) { target.click(); return target.textContent?.trim(); }
+          return null;
         });
         if (!selected) throw new Error('Line 0237600094 not found in options');
-        await sleep(6000); // Wait for page reload
-        console.log('    wait + click + evaluate');
+        console.log('    Selected:', selected);
+        // Wait for navigation to account overview (up to 15 seconds)
+        for (let w = 0; w < 15; w++) {
+          await sleep(1000);
+          const url = page.url();
+          console.log('    Waiting for data page... URL:', url, '(' + (w+1) + 's)');
+          if (url.includes('accountoverview') || url.includes('account')) {
+            console.log('    ✓ Navigated to data page');
+            await sleep(3000); // Extra wait for page content to load
+            return;
+          }
+        }
+        // If still not on accountoverview, check if we have data anyway
+        const hasData = await page.evaluate(() => document.body.innerText.includes('Remaining'));
+        if (hasData) { console.log('    ✓ Data found on current page'); return; }
+        throw new Error('Did not navigate to data page after line switch');
       },
-      // M2: Direct select by value
+      // M2: Direct select by value then wait for navigation
       async () => {
         await sleep(2000);
         await page.select('select', '0237600094').catch(() => {});
-        await sleep(6000);
+        for (let w = 0; w < 15; w++) {
+          await sleep(1000);
+          const url = page.url();
+          if (url.includes('accountoverview') || url.includes('account')) {
+            await sleep(3000);
+            return;
+          }
+        }
         console.log('    select by value');
       },
-      // M3: Click dropdown via class patterns
+      // M3: Broad click search then wait
       async () => {
         await sleep(2000);
         await page.click('[class*="select"]').catch(() => {});
         await sleep(1000);
         await page.evaluate(() => {
-          for (let el of document.querySelectorAll('div, li, option')) {
+          for (let el of document.querySelectorAll('div, li, option, span')) {
             if (el.textContent?.includes('0237600094')) { el.click(); return; }
           }
         });
-        await sleep(6000);
+        for (let w = 0; w < 15; w++) {
+          await sleep(1000);
+          const url = page.url();
+          if (url.includes('accountoverview') || url.includes('account')) {
+            await sleep(3000);
+            return;
+          }
+        }
         console.log('    broad search + click');
       }
-    ], 'LINE SWITCHER', 20000);
-    console.log('  ✓ Switched to 0237600094\n');
+    ], 'LINE SWITCHER', 30000);
+    console.log('  ✓ Switched to 0237600094, URL:', page.url(), '\n');
 
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
