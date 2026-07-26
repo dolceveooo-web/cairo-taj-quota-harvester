@@ -686,7 +686,6 @@ async function harvestQuota() {
           await sleep(1000); // Brief wait for new captcha image to load
         }
 
-        try {
           // Wait for valid captcha image (up to 8s)
           let imgHandle = null;
           for (let retry = 0; retry < 8; retry++) {
@@ -722,6 +721,7 @@ async function harvestQuota() {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
             console.log('    X Wrong answer "' + attempt + '", next round...');
+          }
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
