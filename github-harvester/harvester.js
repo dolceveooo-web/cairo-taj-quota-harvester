@@ -734,23 +734,6 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
-
-    // DIAGNOSTIC: dump page text around key labels so we can see exact layout
-    const extractDiag = await withTimeout(page.evaluate(() => {
-      const text = document.body.innerText;
-      // Find "Remaining" in text and show 60 chars before and after
-      const rIdx = text.indexOf('Remaining');
-      const uIdx = text.indexOf('Used');
-      const bIdx = text.indexOf('Current Balance');
-      return {
-        aroundRemaining: rIdx >= 0 ? JSON.stringify(text.slice(Math.max(0, rIdx-60), rIdx+20)) : 'NOT FOUND',
-        aroundUsed: uIdx >= 0 ? JSON.stringify(text.slice(Math.max(0, uIdx-60), uIdx+20)) : 'NOT FOUND',
-        aroundBalance: bIdx >= 0 ? JSON.stringify(text.slice(Math.max(0, bIdx), bIdx+40)) : 'NOT FOUND',
-      };
-    }), 10000, 'extractDiag').catch(e => ({ error: e.message }));
-    console.log('  [DIAG] aroundRemaining:', extractDiag.aroundRemaining);
-    console.log('  [DIAG] aroundUsed:', extractDiag.aroundUsed);
-    console.log('  [DIAG] aroundBalance:', extractDiag.aroundBalance);
     const data = await tryMethods([
       // M1: Walk ALL spans/divs, find ones whose text is ONLY a decimal number,
       // then check if a nearby sibling contains "Remaining" or "Used"
