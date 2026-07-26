@@ -704,11 +704,30 @@ async function harvestQuota() {
             continue;
           }
 
-          captchaSolved = await submitAnswer(bestAnswer);
+          // Try original case first, then uppercase, then lowercase
+          // WE captcha is case-sensitive so all 3 variants are worth trying
+          const variants = [bestAnswer];
+          if (bestAnswer !== bestAnswer.toUpperCase()) variants.push(bestAnswer.toUpperCase());
+          if (bestAnswer !== bestAnswer.toLowerCase()) variants.push(bestAnswer.toLowerCase());
+
+          let solved = false;
+          for (const variant of variants) {
+            console.log('    -> Trying variant:', variant);
+            solved = await submitAnswer(variant);
+            if (solved) { captchaSolved = true; break; }
+            // If modal closed after wrong answer, need to retrigger before next variant
+            const stillOpen = await isModalOpen();
+            if (!stillOpen && !page.url().includes('login')) { captchaSolved = true; break; }
+            if (!stillOpen) {
+              const gotNew = await retriggerLogin();
+              if (!gotNew) { if (!page.url().includes('login')) captchaSolved = true; break; }
+            }
+          }
+
           if (captchaSolved) {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
-            console.log('    X Wrong answer "' + bestAnswer + '", next round...');
+            console.log('    X All variants wrong, next round...');
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
