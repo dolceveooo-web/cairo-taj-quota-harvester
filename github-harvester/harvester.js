@@ -676,6 +676,7 @@ async function harvestQuota() {
           }
         }
 
+        try {
           // Wait for valid captcha image (up to 8s)
           let imgHandle = null;
           for (let retry = 0; retry < 8; retry++) {
@@ -727,7 +728,10 @@ async function harvestQuota() {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
             console.log('    X All variants wrong, next round...');
+<<<<<<< HEAD
           }
+=======
+>>>>>>> parent of 2e99080 (Update harvester.js)
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
