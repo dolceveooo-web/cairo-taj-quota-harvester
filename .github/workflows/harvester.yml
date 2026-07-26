@@ -40,6 +40,8 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           WE_USERNAME: ${{ secrets.WE_USERNAME }}
           WE_PASSWORD: ${{ secrets.WE_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           cd github-harvester
           node harvester.js
