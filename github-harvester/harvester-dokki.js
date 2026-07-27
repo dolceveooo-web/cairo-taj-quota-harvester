@@ -1191,6 +1191,35 @@ async function harvestQuota() {
     console.log('  ✓ Ledger updated!\n');
 
     // ══════════════════════════════════════
+    console.log('STEP 8.5: LOW QUOTA FLAG');
+    // ══════════════════════════════════════
+    // Write flag to Firestore quota_settings/alerts
+    // dokki_low: true  → hourly workflow will run full harvest
+    // dokki_low: false → hourly workflow will skip (normal 2h schedule handles it)
+    try {
+      const isLowDokki = data.remaining < 100;
+      const alertFields = {
+        dokki_low:       { booleanValue: isLowDokki },
+        dokki_quota:     { doubleValue: data.remaining },
+        dokki_updatedAt: { stringValue: now }
+      };
+      const alertMask = 'updateMask.fieldPaths=dokki_low&updateMask.fieldPaths=dokki_quota&updateMask.fieldPaths=dokki_updatedAt';
+      const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
+      const alertRes = await fetch(alertUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: alertFields })
+      });
+      if (alertRes.ok) {
+        console.log('  ✓ Low quota flag set: dokki_low=' + isLowDokki + ' (' + data.remaining.toFixed(1) + ' GB)\n');
+      } else {
+        console.log('  ⚠ Flag write failed (non-critical): HTTP ' + alertRes.status);
+      }
+    } catch(e) {
+      console.log('  ⚠ Flag write error (non-critical):', e.message);
+    }
+
+    // ══════════════════════════════════════
     console.log('STEP 9: TELEGRAM');
     // ══════════════════════════════════════
     try {
