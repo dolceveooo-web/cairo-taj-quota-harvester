@@ -949,6 +949,33 @@ async function harvestQuota() {
     console.log('  ✓ Ledger updated!\n');
 
     // ══════════════════════════════════════
+    console.log('STEP 8.5: LOW QUOTA FLAG');
+    // ══════════════════════════════════════
+    // Write flag to Firestore quota_settings/alerts
+    // line104_low: true  → hourly workflow will run full harvest
+    // line104_low: false → hourly workflow will skip (normal 2h schedule handles it)
+    try {
+      const isLow104 = data.remaining < 100;
+      const alertFields = {
+        line104_low:  { booleanValue: isLow104 },
+        line104_quota: { doubleValue: data.remaining },
+        line104_updatedAt: { stringValue: now }
+      };
+      const alertMask = 'updateMask.fieldPaths=line104_low&updateMask.fieldPaths=line104_quota&updateMask.fieldPaths=line104_updatedAt';
+      const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
+      const alertRes = await fetch(alertUrl, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: alertFields })
+      });
+      if (alertRes.ok) {
+        console.log('  ✓ Low quota flag set: line104_low=' + isLow104 + ' (' + data.remaining.toFixed(1) + ' GB)\n');
+      } else {
+        console.log('  ⚠ Flag write failed (non-critical): HTTP ' + alertRes.status);
+      }
+    } catch(e) {
+      console.log('  ⚠ Flag write error (non-critical):', e.message);
+    }    // ══════════════════════════════════════
     console.log('STEP 9: TELEGRAM');
     // ══════════════════════════════════════
     try {
