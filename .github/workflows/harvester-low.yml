@@ -1,0 +1,76 @@
+name: Cloud Quota Harvester - Line 104 (Hourly Low Quota)
+
+# Runs every hour — but only does a full harvest if line104_low flag is true in Firestore
+# When quota < 100 GB, harvester.js sets line104_low=true → this workflow kicks in hourly
+# When quota recovers >= 100 GB, harvester.js sets line104_low=false → this workflow exits fast
+
+on:
+  schedule:
+    - cron: '30 * * * *'   # Every hour at :30 (offset from main workflow at :00)
+  workflow_dispatch:
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check low quota flag
+        id: flag_check
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        run: |
+          echo "Checking line104_low flag in Firestore..."
+          RESPONSE=$(curl -s "https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}")
+          FLAG=$(echo "$RESPONSE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('fields',{}).get('line104_low',{}).get('booleanValue','false'))" 2>/dev/null || echo "false")
+          echo "line104_low=$FLAG"
+          echo "flag=$FLAG" >> $GITHUB_OUTPUT
+
+      - name: Skip if quota normal
+        if: steps.flag_check.outputs.flag != 'true'
+        run: |
+          echo "✓ line104_low=false — quota is normal. Skipping hourly harvest."
+          echo "Normal 2-hour schedule handles this. Exiting."
+
+      - name: Checkout
+        if: steps.flag_check.outputs.flag == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Chrome
+        if: steps.flag_check.outputs.flag == 'true'
+        uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: stable
+
+      - name: Setup Node.js
+        if: steps.flag_check.outputs.flag == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache npm
+        if: steps.flag_check.outputs.flag == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('github-harvester/package.json') }}
+
+      - name: Install dependencies
+        if: steps.flag_check.outputs.flag == 'true'
+        run: |
+          cd github-harvester
+          npm install --prefer-offline --no-audit
+
+      - name: Run harvester (LOW QUOTA MODE)
+        if: steps.flag_check.outputs.flag == 'true'
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+          FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+          WE_USERNAME: ${{ secrets.WE_USERNAME }}
+          WE_PASSWORD: ${{ secrets.WE_PASSWORD }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          echo "🚨 LOW QUOTA MODE — Running hourly harvest for Line 104"
+          cd github-harvester
+          node harvester.js
