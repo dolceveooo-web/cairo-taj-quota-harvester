@@ -916,26 +916,35 @@ async function harvestQuota() {
           // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
           // 4. balance > 0 (data fully loaded, not still loading)
           // 5. plan !== 'Unknown' (full page rendered)
+          // 6. remaining + used > 300 GB (line 94 = 750GB plan, line 93 = 250GB plan)
+          //    This catches mixed-state where balance updated but remaining/used still from line 93
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured && captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown') {
-              switcherCapturedData = captured;
-              console.log('    ✓ M1 FULL DATA CAPTURED: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
-              return; // SUCCESS
-            } else if (captured && captured.balance > 0 && captured.balance < 3000) {
-              console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
-            } else if (captured && captured.balance === 0) {
-              console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
-            } else if (captured && captured.plan === 'Unknown') {
-              console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+            if (captured) {
+              const totalGB = (captured.remaining || 0) + (captured.used || 0);
+              if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
+                switcherCapturedData = captured;
+                console.log('    ✓ M1 FULL DATA CAPTURED: remaining=' + captured.remaining + ' used=' + captured.used + ' total=' + totalGB.toFixed(1) + 'GB balance=' + captured.balance + ' plan=' + captured.plan);
+                return; // SUCCESS
+              } else if (captured.balance > 0 && captured.balance < 3000) {
+                console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
+              } else if (captured.balance === 0) {
+                console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
+              } else if (captured.plan === 'Unknown') {
+                console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+              } else if (totalGB <= 300) {
+                console.log('    ⚠ (' + (w+1) + 's) MIXED STATE: balance=' + captured.balance + ' (094✓) but rem+used=' + totalGB.toFixed(1) + 'GB (093 plan=250GB!) — waiting for full 094 data...');
+              } else {
+                console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... rem=' + captured.remaining + ' bal=' + captured.balance + ' total=' + totalGB.toFixed(1));
+              }
             } else {
-              console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... has094=' + check.has094 + ' rem=' + check.rem);
+              console.log('    ⏳ (' + (w+1) + 's) extractNow returned null, waiting...');
             }
           } else {
             console.log('    ⏳ (' + (w+1) + 's) URL:' + url.split('#')[1] + ' | has094:' + check.has094 + ' | hasRem:' + check.hasRemaining + ' | bal:' + check.balNum);
           }
         }
-        throw new Error('M1: Page did not show line 94 FULL data (balance>3000, bal>0, plan loaded) in 30s');
+        throw new Error('M1: Page did not show line 94 FULL data (balance>3000, totalGB>300, plan loaded) in 30s');
       },
 
       // M2: Broad evaluate click → same capture strategy
@@ -964,32 +973,30 @@ async function harvestQuota() {
 
           if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
 
-          // CRITICAL: Must satisfy ALL conditions for valid capture:
-          // 1. check.hasRemaining = true (data visible)
-          // 2. check.has094 = true (correct line showing)
-          // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
-          // 4. balance > 0 (data fully loaded, not still loading)
-          // 5. plan !== 'Unknown' (full page rendered)
+          // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured && captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown') {
-              switcherCapturedData = captured;
-              console.log('    ✓ M2 FULL DATA CAPTURED: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
-              return;
-            } else if (captured && captured.balance > 0 && captured.balance < 3000) {
-              console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
-            } else if (captured && captured.balance === 0) {
-              console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
-            } else if (captured && captured.plan === 'Unknown') {
-              console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
-            } else {
-              console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... rem=' + check.rem + ' bal=' + check.balNum);
+            if (captured) {
+              const totalGB = (captured.remaining || 0) + (captured.used || 0);
+              if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
+                switcherCapturedData = captured;
+                console.log('    ✓ M2 FULL DATA CAPTURED: remaining=' + captured.remaining + ' total=' + totalGB.toFixed(1) + 'GB balance=' + captured.balance);
+                return;
+              } else if (captured.balance > 0 && captured.balance < 3000) {
+                console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093)');
+              } else if (captured.balance === 0) {
+                console.log('    ⏳ (' + (w+1) + 's) Balance=0, loading... rem=' + captured.remaining);
+              } else if (captured.plan === 'Unknown') {
+                console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+              } else if (totalGB <= 300) {
+                console.log('    ⚠ (' + (w+1) + 's) MIXED STATE: balance=' + captured.balance + '✓ but total=' + totalGB.toFixed(1) + 'GB = 093 plan, waiting...');
+              }
             }
           } else {
             console.log('    ⏳ (' + (w+1) + 's) rem:' + check.rem + ' | has094:' + check.has094 + ' | bal:' + check.balNum);
           }
         }
-        throw new Error('M2: Page did not show line 94 FULL data (balance>3000, bal>0, plan loaded) in 25s');
+        throw new Error('M2: Page did not show line 94 FULL data (balance>3000, totalGB>300, plan loaded) in 25s');
       },
 
       // M3: page.select() + capture
@@ -1003,32 +1010,30 @@ async function harvestQuota() {
 
           if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
 
-          // CRITICAL: Must satisfy ALL conditions for valid capture:
-          // 1. check.hasRemaining = true (data visible)
-          // 2. check.has094 = true (correct line showing)
-          // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
-          // 4. balance > 0 (data fully loaded, not still loading)
-          // 5. plan !== 'Unknown' (full page rendered)
+          // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured && captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown') {
-              switcherCapturedData = captured;
-              console.log('    ✓ M3 FULL DATA CAPTURED: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
-              return;
-            } else if (captured && captured.balance > 0 && captured.balance < 3000) {
-              console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
-            } else if (captured && captured.balance === 0) {
-              console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
-            } else if (captured && captured.plan === 'Unknown') {
-              console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
-            } else {
-              console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... rem=' + check.rem + ' bal=' + check.balNum);
+            if (captured) {
+              const totalGB = (captured.remaining || 0) + (captured.used || 0);
+              if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
+                switcherCapturedData = captured;
+                console.log('    ✓ M3 FULL DATA CAPTURED: remaining=' + captured.remaining + ' total=' + totalGB.toFixed(1) + 'GB balance=' + captured.balance);
+                return;
+              } else if (captured.balance > 0 && captured.balance < 3000) {
+                console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093)');
+              } else if (captured.balance === 0) {
+                console.log('    ⏳ (' + (w+1) + 's) Balance=0, loading... rem=' + captured.remaining);
+              } else if (captured.plan === 'Unknown') {
+                console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+              } else if (totalGB <= 300) {
+                console.log('    ⚠ (' + (w+1) + 's) MIXED STATE: balance=' + captured.balance + '✓ but total=' + totalGB.toFixed(1) + 'GB = 093 plan, waiting...');
+              }
             }
           } else {
             console.log('    ⏳ (' + (w+1) + 's) rem:' + check.rem + ' | has094:' + check.has094 + ' | bal:' + check.balNum);
           }
         }
-        throw new Error('M3: Page did not show line 94 FULL data (balance>3000, bal>0, plan loaded) in 25s');
+        throw new Error('M3: Page did not show line 94 FULL data (balance>3000, totalGB>300, plan loaded) in 25s');
       }
     ], 'LINE SWITCHER', 45000);
 
