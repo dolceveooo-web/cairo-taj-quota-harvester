@@ -53,6 +53,53 @@ async function harvestQuota() {
   console.log('🚀 STARTING...\n');
   let browser, page;
 
+  // ── Session Cookie Helpers ─────────────────────────────────────────────────
+  // Save/load cookies via Firestore so we can skip login when session is still valid
+  // Cookies stored in quota_settings/session_104 as a JSON string
+  async function loadSavedCookies() {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const doc = await res.json();
+      const cookieStr = doc?.fields?.cookies?.stringValue;
+      const savedAt = doc?.fields?.savedAt?.stringValue;
+      if (!cookieStr || !savedAt) return null;
+      // Only use cookies saved within last 4 hours
+      const age = Date.now() - new Date(savedAt).getTime();
+      if (age > 4 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>4h old), will do fresh login'); return null; }
+      console.log('  [SESSION] Found saved cookies (' + Math.floor(age/60000) + 'm old)');
+      return JSON.parse(cookieStr);
+    } catch(e) { console.log('  [SESSION] Could not load cookies:', e.message); return null; }
+  }
+
+  async function saveCookies(cookies) {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
+      await fetch(url, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: {
+          cookies:  { stringValue: JSON.stringify(cookies) },
+          savedAt:  { stringValue: new Date().toISOString() },
+          line:     { stringValue: '104' }
+        }})
+      });
+      console.log('  [SESSION] Cookies saved to Firestore ✓');
+    } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
+  }
+
+  async function clearCookies() {
+    try {
+      const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
+      await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fields: { cookies: { stringValue: '' }, savedAt: { stringValue: '' } }})
+      });
+      console.log('  [SESSION] Cookies cleared from Firestore');
+    } catch(e) {}
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
   try {
     browser = await puppeteer.launch({
       headless: true,
@@ -99,8 +146,38 @@ async function harvestQuota() {
     });
 
     // ══════════════════════════════════════
+    // STEP 0: TRY SAVED SESSION COOKIES
+    // ══════════════════════════════════════
+    console.log('STEP 0: SESSION CHECK');
+    let sessionValid = false;
+    const savedCookies = await loadSavedCookies();
+    if (savedCookies && savedCookies.length > 0) {
+      try {
+        console.log('  Trying saved session cookies...');
+        await page.setCookie(...savedCookies);
+        await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 20000 });
+        await sleep(3000);
+        const url = page.url();
+        const isLoggedIn = !url.includes('login') && url.includes('account');
+        if (isLoggedIn) {
+          sessionValid = true;
+          console.log('  ✓ Session still valid! Skipping login entirely.\n');
+        } else {
+          console.log('  ✗ Session expired, clearing and doing fresh login');
+          await clearCookies();
+        }
+      } catch(e) {
+        console.log('  ✗ Session check failed:', e.message);
+        await clearCookies();
+      }
+    } else {
+      console.log('  No saved session, will do fresh login\n');
+    }
+
+    // ══════════════════════════════════════
     console.log('STEP 1: NAVIGATE');
     // ══════════════════════════════════════
+    if (!sessionValid) {
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
@@ -461,7 +538,7 @@ async function harvestQuota() {
     ], 'SUBMIT', 20000);
 
     // ======================================
-    // POST-SUBMIT: Race - URL change vs captcha modal
+    // POST-SUBMIT: Race - URL change vs captcha modal vs block
     // ======================================
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown';
@@ -472,18 +549,38 @@ async function harvestQuota() {
         console.log('  [OK] URL changed to:', currentUrl);
         break;
       }
-      const hasCaptcha = await page.evaluate(() => {
+      // Check for captcha OR block message
+      const pageState = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
         const text = document.body.innerText.toLowerCase();
-        return !!modal || text.includes('verification') || text.includes('enter code');
+        const hasCaptcha = !!modal || text.includes('verification') || text.includes('enter code');
+        // Detect WE block messages
+        const isBlocked = text.includes('maximum') || text.includes('too many') ||
+                          text.includes('exceeded') || text.includes('try again') ||
+                          text.includes('blocked') || text.includes('محاولات') ||
+                          text.includes('الحد الاقصى') || text.includes('مره اخرى');
+        return { hasCaptcha, isBlocked, text: text.slice(0, 200) };
       });
-      if (hasCaptcha) {
+
+      if (pageState.isBlocked) {
+        postLoginState = 'blocked';
+        console.log('  [BLOCKED] WE has blocked this IP/account temporarily');
+        console.log('  [BLOCKED] Page text:', pageState.text.slice(0, 150));
+        break;
+      }
+      if (pageState.hasCaptcha) {
         postLoginState = 'captcha';
         console.log('  [CAPTCHA] Modal detected at', tick + 1, 'seconds');
         break;
       }
       if (tick % 3 === 0) console.log('  Waiting...', tick + 1, 's');
       await sleep(1000);
+    }
+
+    // Handle blocked state — clear cookies and exit cleanly (don't retry)
+    if (postLoginState === 'blocked') {
+      await clearCookies(); // Clear any saved session
+      throw new Error('WE_BLOCKED: Account/IP temporarily blocked. Will auto-retry on next scheduled run (2h).');
     }
 
     if (postLoginState === 'unknown') {
@@ -643,13 +740,11 @@ async function harvestQuota() {
         return false;
       }
 
-      // MAIN CAPTCHA LOOP (12 rounds)
-      // WE behavior: wrong answer -> modal closes -> NEW modal appears immediately
-      // So we just wait for modal to appear at start of each round, no re-clicking needed
+      // MAIN CAPTCHA LOOP (6 rounds — enough to solve, avoids IP block from too many attempts)
       const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
-      for (let round = 1; round <= 12 && !captchaSolved; round++) {
+      for (let round = 1; round <= 6 && !captchaSolved; round++) {
         console.log('  -- Round', round, '/ 12 --');
 
         // Wait for captcha modal to be present (it appears automatically after wrong answer)
@@ -743,6 +838,17 @@ async function harvestQuota() {
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
     // ══════════════════════════════════════
     console.log('  ✓ Login successful!\n');
+
+    // Save session cookies for next run (avoids login entirely if session still valid)
+    try {
+      const cookies = await page.cookies();
+      const relevantCookies = cookies.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
+      if (relevantCookies.length > 0) {
+        await saveCookies(relevantCookies);
+      }
+    } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
+
+    } // end if (!sessionValid)
 
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
@@ -1082,6 +1188,12 @@ async function main() {
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
+      // If WE blocked us, don't retry — it will make things worse
+      if (error.message && error.message.includes('WE_BLOCKED')) {
+        console.error('⛔ WE block detected — stopping all retries to avoid extending the block period');
+        console.error('💀 Will retry on next scheduled run automatically');
+        process.exit(1);
+      }
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
