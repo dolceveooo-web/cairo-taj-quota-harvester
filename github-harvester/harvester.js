@@ -587,7 +587,13 @@ async function harvestQuota() {
           setter.call(inp, ans);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-          const btn = modal.querySelector('button.ant-btn-primary, button');
+          // Find the OK/confirm button — NOT Cancel. Look for button with ok/confirm text,
+          // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
+          const allBtns = Array.from(modal.querySelectorAll('button'));
+          const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
+                      modal.querySelector('button.ant-btn-primary') ||
+                      allBtns[allBtns.length - 1]; // last button = OK
+          console.log('[captcha] Clicking button:', btn ? btn.textContent.trim() : 'none', 'of', allBtns.length, 'buttons');
           if (btn) btn.click();
           return true;
         }, answer);
@@ -638,42 +644,46 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (12 rounds)
+      // WE behavior: wrong answer -> modal closes -> NEW modal appears immediately
+      // So we just wait for modal to appear at start of each round, no re-clicking needed
       const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
         console.log('  -- Round', round, '/ 12 --');
 
-        // On rounds 2+: check modal state and refresh/retrigger
+        // Wait for captcha modal to be present (it appears automatically after wrong answer)
         if (round > 1) {
-          const modalOpen = await isModalOpen();
-          if (!modalOpen) {
-            // Modal was closed after wrong answer -> need to re-click Login
-            const gotNewCaptcha = await retriggerLogin();
-            if (!gotNewCaptcha) {
-              // Check if we actually navigated away (success!)
-              if (!page.url().includes('login')) {
-                captchaSolved = true;
-                console.log('  [OK] Navigated away during retrigger - login succeeded!');
-                break;
-              }
-              console.log('    ! Could not get new captcha modal');
-              continue;
+          let modalFound = false;
+          for (let w = 0; w < 10; w++) {
+            await sleep(1000);
+            const isOpen = await isModalOpen();
+            if (isOpen) { modalFound = true; break; }
+            // Check if login succeeded (navigated away)
+            if (!page.url().includes('login')) {
+              captchaSolved = true;
+              console.log('  [OK] Navigated away - login succeeded!');
+              break;
             }
-          } else {
-            // Modal still open - try clicking refresh icon
+          }
+          if (captchaSolved) break;
+          if (!modalFound) {
+            // Modal didn't appear - try clicking Login to trigger it
+            console.log('    Modal not found, re-clicking Login...');
             await page.evaluate(() => {
-              const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-              if (!modal) return;
-              const icon = modal.querySelector('.anticon-sync, .anticon-reload, [class*="refresh"], [class*="reload"]');
-              if (icon) icon.click();
-              else {
-                const imgs = modal.querySelectorAll('img');
-                if (imgs.length > 1) imgs[1].click();
-              }
+              const btns = Array.from(document.querySelectorAll('button'));
+              const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+              if (btn) btn.click();
             });
             await sleep(3000);
+            const nowOpen = await isModalOpen();
+            if (!nowOpen) {
+              if (!page.url().includes('login')) { captchaSolved = true; break; }
+              console.log('    ! Still no modal, skipping round');
+              continue;
+            }
           }
+          await sleep(1000); // Brief wait for new captcha image to load
         }
 
         try {
@@ -703,31 +713,15 @@ async function harvestQuota() {
             console.log('    ! No 5-char result from any filter');
             continue;
           }
-
-          // Try original case first, then uppercase, then lowercase
-          // WE captcha is case-sensitive so all 3 variants are worth trying
-          const variants = [bestAnswer];
-          if (bestAnswer !== bestAnswer.toUpperCase()) variants.push(bestAnswer.toUpperCase());
-          if (bestAnswer !== bestAnswer.toLowerCase()) variants.push(bestAnswer.toLowerCase());
-
-          let solved = false;
-          for (const variant of variants) {
-            console.log('    -> Trying variant:', variant);
-            solved = await submitAnswer(variant);
-            if (solved) { captchaSolved = true; break; }
-            // If modal closed after wrong answer, need to retrigger before next variant
-            const stillOpen = await isModalOpen();
-            if (!stillOpen && !page.url().includes('login')) { captchaSolved = true; break; }
-            if (!stillOpen) {
-              const gotNew = await retriggerLogin();
-              if (!gotNew) { if (!page.url().includes('login')) captchaSolved = true; break; }
-            }
-          }
-
+          // One attempt per round — cycle through case variants across rounds
+          const variantIndex = (round - 1) % 3;
+          const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
+          console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
+          captchaSolved = await submitAnswer(attempt);
           if (captchaSolved) {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
-            console.log('    X All variants wrong, next round...');
+            console.log('    X Wrong answer "' + attempt + '", next round...');
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
@@ -963,18 +957,31 @@ async function harvestQuota() {
         day: '2-digit', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
+
+      // Quota alert level
+      const rem = data.remaining;
+      let alertLine = '';
+      if (rem < 30)       alertLine = '\n🚨 *CRITICAL — Under 30 GB! Recharge immediately!*';
+      else if (rem < 50)  alertLine = '\n🔴 *CRITICAL — Under 50 GB!*';
+      else if (rem < 100) alertLine = '\n🟠 *WARNING — Under 100 GB*';
+
+      // Status icon based on level
+      const statusIcon = rem < 50 ? '🔴' : rem < 100 ? '🟠' : '✅';
+
       const msg = [
         '📡 *Cairo Taj — Line 104 Harvest*',
         '',
-        `✅ Quota Remaining: *${data.remaining.toFixed(2)} GB*`,
+        `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
         `📉 Used: *${data.used.toFixed(2)} GB*`,
         `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
         `📋 Plan: ${data.plan}`,
         `🕐 ${date}`,
-        `🤖 GitHub Cloud ⚡`
+        `🤖 GitHub Cloud ⚡` + alertLine
       ].join('\n');
 
       const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+      // Send main harvest message
       const tgRes = await fetch(tgUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -986,6 +993,31 @@ async function harvestQuota() {
       });
       if (!tgRes.ok) throw new Error(`Telegram HTTP ${tgRes.status}`);
       console.log('  ✓ Telegram sent!\n');
+
+      // CRITICAL ALERT: Under 30 GB — send a separate urgent message
+      // This triggers a second notification/ringtone on the phone
+      if (rem < 30) {
+        await fetch(tgUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: [
+              '🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨',
+              '',
+              '⚠️ *Cairo Taj — Line 104*',
+              `📉 Only *${rem.toFixed(2)} GB* remaining!`,
+              '🔴 *ACTION REQUIRED: Recharge immediately!*',
+              '',
+              `🕐 ${date}`
+            ].join('\n'),
+            parse_mode: 'Markdown',
+            disable_notification: false  // Force notification sound
+          })
+        });
+        console.log('  🚨 Critical alert sent!\n');
+      }
+
     } catch (e) {
       // Telegram failure should NOT fail the whole harvest
       console.log('  ⚠ Telegram failed (non-critical):', e.message);
