@@ -811,14 +811,63 @@ async function harvestQuota() {
     }
 
     // Helper: check page is showing correct line with actual data
+    // IMPORTANT: checks the ACTIVE line widget (top-left "You are currently managing")
+    // NOT just text.includes() which can false-positive from hidden dropdown options
     async function checkPage094() {
       return await page.evaluate(() => {
-        const text = document.body.innerText;
-        const has094 = text.includes('0237600094');
-        const rem = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || '';
-        const hasBalance = text.includes('Current Balance') || text.includes('EGP');
-        return { has094, rem, hasBalance, hasRemaining: !!rem };
-      }).catch(() => ({ has094: false, rem: '', hasBalance: false, hasRemaining: false }));
+        // Method 1: Check the active line widget specifically
+        // The "You are currently managing" shows the ACTIVE line number
+        const activeEl = document.querySelector(
+          '#accountOverview_currentNumber, .ant-select-selection-item, [class*="currentNumber"], [class*="current-number"]'
+        );
+        const activeText = activeEl ? activeEl.innerText?.trim() : '';
+
+        // Method 2: Check the small line number display near "You are currently managing"
+        const managingEls = Array.from(document.querySelectorAll('span, div'));
+        let managingLine = '';
+        for (let i = 0; i < managingEls.length; i++) {
+          const t = managingEls[i].innerText?.trim();
+          if (t && t.includes('currently managing')) {
+            // The line number is usually in a nearby sibling or child
+            const nearby = managingEls[i+1]?.innerText?.trim() || managingEls[i+2]?.innerText?.trim() || '';
+            if (nearby.includes('023760009')) { managingLine = nearby; break; }
+            // Also check children
+            const child = managingEls[i].querySelector('[class*="number"], [class*="select"]');
+            if (child) { managingLine = child.innerText?.trim(); break; }
+          }
+        }
+
+        // Method 3: Look for 0237600094 specifically in small/label elements (not huge containers)
+        let foundIn094Widget = false;
+        for (const el of document.querySelectorAll('span, a, button, label, .ant-select-selection-item')) {
+          const t = el.innerText?.trim();
+          if (t && t.includes('0237600094') && t.length < 20) {
+            foundIn094Widget = true;
+            break;
+          }
+        }
+
+        const rem = document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || '';
+        const bal = document.body.innerText.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)?.[1]
+                 || document.body.innerText.match(/([\d,]+\.?\d+)\s*EGP/i)?.[1] || '0';
+        const balNum = parseFloat(bal.replace(/,/g, '')) || 0;
+
+        // Line 0237600094 has balance > 3000 EGP (line 0237600093 has ~1923 EGP)
+        const isCorrectByBalance = balNum > 3000;
+
+        const has094 = activeText.includes('0237600094') || managingLine.includes('0237600094') || foundIn094Widget || isCorrectByBalance;
+
+        return {
+          has094,
+          activeText,
+          managingLine,
+          foundIn094Widget,
+          isCorrectByBalance,
+          balNum,
+          rem,
+          hasRemaining: !!rem
+        };
+      }).catch(() => ({ has094: false, activeText: '', managingLine: '', foundIn094Widget: false, isCorrectByBalance: false, balNum: 0, rem: '', hasRemaining: false }));
     }
 
     // The captured data from inside the switcher (avoids race condition)
@@ -852,32 +901,41 @@ async function harvestQuota() {
         if (!clicked) throw new Error('Option 0237600094 not found');
         console.log('    Clicked:', clicked);
 
-        // Poll aggressively — capture data THE MOMENT the page shows 0237600094
+        // Poll aggressively — capture data THE MOMENT the page shows 0237600094 AND full data loaded
         for (let w = 0; w < 30; w++) {
           await sleep(1000);
           const url = page.url();
           const check = await checkPage094();
-          console.log('    (' + (w+1) + 's) URL:', url.split('#')[1]||url, '| has094:', check.has094, '| rem:', check.rem);
 
+          // If stuck on login after 5s, fail this method
+          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login after line switch');
+
+          // CRITICAL: Must satisfy ALL conditions for valid capture:
+          // 1. check.hasRemaining = true (data visible)
+          // 2. check.has094 = true (correct line showing)
+          // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
+          // 4. balance > 0 (data fully loaded, not still loading)
+          // 5. plan !== 'Unknown' (full page rendered)
           if (check.hasRemaining && check.has094) {
-            // Page is showing correct line — but wait for FULL page load
-            // Balance=0 or Plan=Unknown means page still loading, keep waiting
             const captured = await extractNow();
-            if (captured && captured.balance > 0 && captured.plan !== 'Unknown') {
+            if (captured && captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown') {
               switcherCapturedData = captured;
-              console.log('    ✓ Full data captured: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
-              return; // SUCCESS — full data is safe
-            } else if (captured) {
-              console.log('    Page confirmed but still loading... rem=' + captured.remaining + ' bal=' + captured.balance + ' plan=' + captured.plan + ' (waiting for full load)');
+              console.log('    ✓ M1 FULL DATA CAPTURED: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
+              return; // SUCCESS
+            } else if (captured && captured.balance > 0 && captured.balance < 3000) {
+              console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
+            } else if (captured && captured.balance === 0) {
+              console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
+            } else if (captured && captured.plan === 'Unknown') {
+              console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+            } else {
+              console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... has094=' + check.has094 + ' rem=' + check.rem);
             }
-          }
-
-          // If page went to login during wait, fail this method
-          if (url.includes('#/login') && w > 5) {
-            throw new Error('Redirected to login after line switch');
+          } else {
+            console.log('    ⏳ (' + (w+1) + 's) URL:' + url.split('#')[1] + ' | has094:' + check.has094 + ' | hasRem:' + check.hasRemaining + ' | bal:' + check.balNum);
           }
         }
-        throw new Error('Page did not show 0237600094 data in 30s');
+        throw new Error('M1: Page did not show line 94 FULL data (balance>3000, bal>0, plan loaded) in 30s');
       },
 
       // M2: Broad evaluate click → same capture strategy
@@ -898,26 +956,40 @@ async function harvestQuota() {
         });
         console.log('    Broad click done, waiting for page...');
 
-        // Same aggressive capture strategy
+        // Same aggressive capture strategy with ALL verification criteria
         for (let w = 0; w < 25; w++) {
           await sleep(1000);
           const url = page.url();
           const check = await checkPage094();
-          console.log('    (' + (w+1) + 's) rem:', check.rem, '| has094:', check.has094);
 
+          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+
+          // CRITICAL: Must satisfy ALL conditions for valid capture:
+          // 1. check.hasRemaining = true (data visible)
+          // 2. check.has094 = true (correct line showing)
+          // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
+          // 4. balance > 0 (data fully loaded, not still loading)
+          // 5. plan !== 'Unknown' (full page rendered)
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured && captured.balance > 0 && captured.plan !== 'Unknown') {
+            if (captured && captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown') {
               switcherCapturedData = captured;
-              console.log('    ✓ M2 full data captured: remaining=' + captured.remaining + ' balance=' + captured.balance);
+              console.log('    ✓ M2 FULL DATA CAPTURED: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
               return;
-            } else if (captured) {
-              console.log('    M2 page loading... rem=' + captured.remaining + ' bal=' + captured.balance);
+            } else if (captured && captured.balance > 0 && captured.balance < 3000) {
+              console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
+            } else if (captured && captured.balance === 0) {
+              console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
+            } else if (captured && captured.plan === 'Unknown') {
+              console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+            } else {
+              console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... rem=' + check.rem + ' bal=' + check.balNum);
             }
+          } else {
+            console.log('    ⏳ (' + (w+1) + 's) rem:' + check.rem + ' | has094:' + check.has094 + ' | bal:' + check.balNum);
           }
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
         }
-        throw new Error('M2: page did not show 0237600094 data');
+        throw new Error('M2: Page did not show line 94 FULL data (balance>3000, bal>0, plan loaded) in 25s');
       },
 
       // M3: page.select() + capture
@@ -926,19 +998,37 @@ async function harvestQuota() {
         await page.select('select', '0237600094').catch(() => {});
         for (let w = 0; w < 25; w++) {
           await sleep(1000);
+          const url = page.url();
           const check = await checkPage094();
+
+          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+
+          // CRITICAL: Must satisfy ALL conditions for valid capture:
+          // 1. check.hasRemaining = true (data visible)
+          // 2. check.has094 = true (correct line showing)
+          // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
+          // 4. balance > 0 (data fully loaded, not still loading)
+          // 5. plan !== 'Unknown' (full page rendered)
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured && captured.balance > 0 && captured.plan !== 'Unknown') {
+            if (captured && captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown') {
               switcherCapturedData = captured;
-              console.log('    ✓ M3 full data captured: remaining=' + captured.remaining + ' balance=' + captured.balance);
+              console.log('    ✓ M3 FULL DATA CAPTURED: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
               return;
-            } else if (captured) {
-              console.log('    M3 page loading... rem=' + captured.remaining + ' bal=' + captured.balance);
+            } else if (captured && captured.balance > 0 && captured.balance < 3000) {
+              console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
+            } else if (captured && captured.balance === 0) {
+              console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
+            } else if (captured && captured.plan === 'Unknown') {
+              console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+            } else {
+              console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... rem=' + check.rem + ' bal=' + check.balNum);
             }
+          } else {
+            console.log('    ⏳ (' + (w+1) + 's) rem:' + check.rem + ' | has094:' + check.has094 + ' | bal:' + check.balNum);
           }
         }
-        throw new Error('M3: page did not show 0237600094 data');
+        throw new Error('M3: Page did not show line 94 FULL data (balance>3000, bal>0, plan loaded) in 25s');
       }
     ], 'LINE SWITCHER', 45000);
 
