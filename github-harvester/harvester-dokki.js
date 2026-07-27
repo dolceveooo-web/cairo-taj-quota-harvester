@@ -860,13 +860,15 @@ async function harvestQuota() {
           console.log('    (' + (w+1) + 's) URL:', url.split('#')[1]||url, '| has094:', check.has094, '| rem:', check.rem);
 
           if (check.hasRemaining && check.has094) {
-            // Page is showing correct line — capture data NOW before any redirect
-            console.log('    ✓ Correct line confirmed — capturing data immediately...');
+            // Page is showing correct line — but wait for FULL page load
+            // Balance=0 or Plan=Unknown means page still loading, keep waiting
             const captured = await extractNow();
-            if (captured) {
+            if (captured && captured.balance > 0 && captured.plan !== 'Unknown') {
               switcherCapturedData = captured;
-              console.log('    ✓ Data captured: remaining=' + captured.remaining + ' balance=' + captured.balance);
-              return; // SUCCESS — data is safe
+              console.log('    ✓ Full data captured: remaining=' + captured.remaining + ' balance=' + captured.balance + ' plan=' + captured.plan);
+              return; // SUCCESS — full data is safe
+            } else if (captured) {
+              console.log('    Page confirmed but still loading... rem=' + captured.remaining + ' bal=' + captured.balance + ' plan=' + captured.plan + ' (waiting for full load)');
             }
           }
 
@@ -905,10 +907,12 @@ async function harvestQuota() {
 
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured) {
+            if (captured && captured.balance > 0 && captured.plan !== 'Unknown') {
               switcherCapturedData = captured;
-              console.log('    ✓ M2 data captured: remaining=' + captured.remaining);
+              console.log('    ✓ M2 full data captured: remaining=' + captured.remaining + ' balance=' + captured.balance);
               return;
+            } else if (captured) {
+              console.log('    M2 page loading... rem=' + captured.remaining + ' bal=' + captured.balance);
             }
           }
           if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
@@ -925,10 +929,12 @@ async function harvestQuota() {
           const check = await checkPage094();
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
-            if (captured) {
+            if (captured && captured.balance > 0 && captured.plan !== 'Unknown') {
               switcherCapturedData = captured;
-              console.log('    ✓ M3 data captured: remaining=' + captured.remaining);
+              console.log('    ✓ M3 full data captured: remaining=' + captured.remaining + ' balance=' + captured.balance);
               return;
+            } else if (captured) {
+              console.log('    M3 page loading... rem=' + captured.remaining + ' bal=' + captured.balance);
             }
           }
         }
