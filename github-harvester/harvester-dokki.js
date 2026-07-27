@@ -750,29 +750,97 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('  Switching to line 0237600094...');
 
-    // After clicking 0237600094, WE portal does a full page reload that may briefly
-    // pass through #/login before settling on #/accountoverview with the new line data.
-    // Strategy: click the option, then wait patiently for accountoverview to load
-    // with data that is different from the previous line's data.
+    // CRITICAL: The WE portal does a session refresh after line switch that can
+    // redirect back to #/login within seconds. The only reliable approach is to
+    // extract the data THE MOMENT we confirm the correct page is showing —
+    // before the redirect can happen. We capture data inside the switcher itself.
+
+    // Helper: extract all quota data from the current page state
+    async function extractNow() {
+      const result = await page.evaluate(() => {
+        const spans = Array.from(document.querySelectorAll('span, div, p'));
+        let remaining = null, used = null, balance = null, plan = null;
+        function isNumericText(t) {
+          if (!t) return false;
+          const s = t.replace(/,/g, '').trim();
+          return /^\d+(\.\d+)?$/.test(s) && !s.startsWith('0237') && !s.startsWith('023');
+        }
+        for (let i = 0; i < spans.length; i++) {
+          const t = spans[i].innerText?.trim();
+          if (!t || t.length > 100) continue;
+          if (t === 'Remaining') {
+            for (let b = 1; b <= 3; b++) {
+              const c = spans[i-b]?.innerText?.trim();
+              if (isNumericText(c)) { remaining = c; break; }
+            }
+          }
+          if (t === 'Used') {
+            for (let b = 1; b <= 3; b++) {
+              const c = spans[i-b]?.innerText?.trim();
+              if (isNumericText(c)) { used = c; break; }
+            }
+          }
+          if (t === 'Current Balance') {
+            for (let f = 1; f <= 5; f++) {
+              const c = spans[i+f]?.innerText?.trim();
+              if (isNumericText(c)) { balance = c; break; }
+            }
+          }
+          if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
+        }
+        if (!remaining) {
+          // Fallback: regex on full page text
+          const text = document.body.innerText;
+          const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
+          const u = text.match(/([\d,]+\.?\d+)\s*\n?\s*Used/i);
+          const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i) || text.match(/([\d,]+\.?\d+)\s*EGP/i);
+          const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
+          if (!r) return null;
+          return { remaining: r[1], used: u?.[1]||'0', balance: b?.[1]||'0', plan: p?.[0]?.trim()||'Unknown' };
+        }
+        return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
+      });
+      if (!result) return null;
+      const parsed = {
+        remaining: stripNum(result.remaining),
+        used: stripNum(result.used) || 0,
+        balance: stripNum(result.balance) || 0,
+        plan: result.plan
+      };
+      return (parsed.remaining || parsed.remaining === 0) ? parsed : null;
+    }
+
+    // Helper: check page is showing correct line with actual data
+    async function checkPage094() {
+      return await page.evaluate(() => {
+        const text = document.body.innerText;
+        const has094 = text.includes('0237600094');
+        const rem = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || '';
+        const hasBalance = text.includes('Current Balance') || text.includes('EGP');
+        return { has094, rem, hasBalance, hasRemaining: !!rem };
+      }).catch(() => ({ has094: false, rem: '', hasBalance: false, hasRemaining: false }));
+    }
+
+    // The captured data from inside the switcher (avoids race condition)
+    let switcherCapturedData = null;
 
     await tryMethods([
-      // M1: Click dropdown option, handle navigation, wait for stable data page
+      // M1: Click dropdown → select 0237600094 → capture data immediately on confirmation
       async () => {
-        // Make sure we're on accountoverview first
         await page.waitForFunction(() => {
           const t = document.body.innerText;
           return t.includes('currently managing') || t.includes('Remaining');
         }, { timeout: 15000 });
-        await sleep(2000);
+        await sleep(1500);
         console.log('    Pre-switch URL:', page.url());
 
-        // Click the dropdown
+        // Open the line switcher dropdown
         const dropdowns = await page.$$('.ant-select-selector, .ant-select');
         if (!dropdowns.length) throw new Error('Dropdown not found');
         await dropdowns[0].click();
-        await sleep(2000);
+        await sleep(1500);
 
-        // Click the 0237600094 option
+        // Click 0237600094
         const clicked = await page.evaluate(() => {
           const opts = Array.from(document.querySelectorAll(
             '.ant-select-item-option-content, .ant-select-item, li, option'
@@ -784,169 +852,146 @@ async function harvestQuota() {
         if (!clicked) throw new Error('Option 0237600094 not found');
         console.log('    Clicked:', clicked);
 
-        // Now wait up to 25 seconds for page to settle on accountoverview with new data
-        // The page may go through login briefly - that's OK, just keep waiting
+        // Poll aggressively — capture data THE MOMENT the page shows 0237600094
+        for (let w = 0; w < 30; w++) {
+          await sleep(1000);
+          const url = page.url();
+          const check = await checkPage094();
+          console.log('    (' + (w+1) + 's) URL:', url.split('#')[1]||url, '| has094:', check.has094, '| rem:', check.rem);
+
+          if (check.hasRemaining && check.has094) {
+            // Page is showing correct line — capture data NOW before any redirect
+            console.log('    ✓ Correct line confirmed — capturing data immediately...');
+            const captured = await extractNow();
+            if (captured) {
+              switcherCapturedData = captured;
+              console.log('    ✓ Data captured: remaining=' + captured.remaining + ' balance=' + captured.balance);
+              return; // SUCCESS — data is safe
+            }
+          }
+
+          // If page went to login during wait, fail this method
+          if (url.includes('#/login') && w > 5) {
+            throw new Error('Redirected to login after line switch');
+          }
+        }
+        throw new Error('Page did not show 0237600094 data in 30s');
+      },
+
+      // M2: Broad evaluate click → same capture strategy
+      async () => {
+        await sleep(2000);
+        // Try all possible selectors for the dropdown
+        await page.evaluate(() => {
+          // Try ant-select first
+          const sel = document.querySelector('.ant-select-selector, .ant-select');
+          if (sel) sel.click();
+        });
+        await sleep(1500);
+        // Click target line
+        await page.evaluate(() => {
+          for (const el of document.querySelectorAll('div, li, option, span, a, .ant-select-item')) {
+            if (el.textContent && el.textContent.trim().includes('0237600094')) { el.click(); return; }
+          }
+        });
+        console.log('    Broad click done, waiting for page...');
+
+        // Same aggressive capture strategy
         for (let w = 0; w < 25; w++) {
           await sleep(1000);
           const url = page.url();
-          console.log('    (' + (w+1) + 's) URL:', url);
-          // Check if we're on accountoverview with the correct line
-          if (url.includes('accountoverview') || url.includes('account')) {
-            const pageCheck = await page.evaluate(() => {
-              const text = document.body.innerText;
-              const hasRemaining = text.includes('Remaining');
-              const has094 = text.includes('0237600094');
-              const rem = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || '';
-              return { hasRemaining, has094, rem };
-            }).catch(() => ({ hasRemaining: false, has094: false, rem: '' }));
-            console.log('    Page: hasRemaining=' + pageCheck.hasRemaining + ' has094=' + pageCheck.has094 + ' rem=' + pageCheck.rem);
-            if (pageCheck.hasRemaining) {
-              console.log('    Data page ready!');
-              await sleep(2000);
+          const check = await checkPage094();
+          console.log('    (' + (w+1) + 's) rem:', check.rem, '| has094:', check.has094);
+
+          if (check.hasRemaining && check.has094) {
+            const captured = await extractNow();
+            if (captured) {
+              switcherCapturedData = captured;
+              console.log('    ✓ M2 data captured: remaining=' + captured.remaining);
+              return;
+            }
+          }
+          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+        }
+        throw new Error('M2: page did not show 0237600094 data');
+      },
+
+      // M3: page.select() + capture
+      async () => {
+        await sleep(2000);
+        await page.select('select', '0237600094').catch(() => {});
+        for (let w = 0; w < 25; w++) {
+          await sleep(1000);
+          const check = await checkPage094();
+          if (check.hasRemaining && check.has094) {
+            const captured = await extractNow();
+            if (captured) {
+              switcherCapturedData = captured;
+              console.log('    ✓ M3 data captured: remaining=' + captured.remaining);
               return;
             }
           }
         }
-        throw new Error('Page did not settle after line switch in 25s');
-      },
-      // M2: Use page.select() then wait for page to settle
-      async () => {
-        await sleep(2000);
-        // Navigate directly to the account page for 0237600094 if possible
-        // First try select by value
-        await page.select('select', '0237600094').catch(() => {});
-        // Wait for page to go through its reload cycle
-        for (let w = 0; w < 20; w++) {
-          await sleep(1000);
-          const url = page.url();
-          if (url.includes('accountoverview') || url.includes('account')) {
-            const hasData = await page.evaluate(() =>
-              document.body.innerText.includes('Remaining')
-            ).catch(() => false);
-            if (hasData) { await sleep(2000); return; }
-          }
-        }
-        console.log('    select by value + wait');
-      },
-      // M3: Click via evaluate + wait for settled state
-      async () => {
-        await sleep(2000);
-        await page.evaluate(() => {
-          for (const el of document.querySelectorAll('div, li, option, span, a')) {
-            if (el.textContent && el.textContent.includes('0237600094')) { el.click(); return; }
-          }
-        });
-        for (let w = 0; w < 20; w++) {
-          await sleep(1000);
-          const url = page.url();
-          if (url.includes('accountoverview') || url.includes('account')) {
-            const hasData = await page.evaluate(() =>
-              document.body.innerText.includes('Remaining')
-            ).catch(() => false);
-            if (hasData) { await sleep(2000); return; }
-          }
-        }
-        console.log('    broad click + wait');
+        throw new Error('M3: page did not show 0237600094 data');
       }
-    ], 'LINE SWITCHER', 40000);
-    console.log('  Switched to 0237600094, URL:', page.url());
+    ], 'LINE SWITCHER', 45000);
+
+    console.log('  ✓ Switched to 0237600094 | captured data:', switcherCapturedData ? 'YES' : 'NO');
+    console.log('  Current URL:', page.url(), '\n');
+
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
-    const data = await tryMethods([
-      // M1: Walk ALL spans/divs, find ones whose text is ONLY a decimal number,
-      // then check if a nearby sibling contains "Remaining" or "Used"
+
+    // Use pre-captured data from switcher if available (avoids race condition with redirect)
+    // Only fall through to live extraction if switcher didn't capture data
+    const data = switcherCapturedData ? await (async () => {
+      console.log('  [FAST PATH] Using data captured during line switch (race-condition safe)');
+      console.log('    M1 numeric-only sibling scan');
+      return switcherCapturedData;
+    })() : await tryMethods([
+      // M1: Walk ALL spans/divs — numeric sibling scan
       async () => {
         await sleep(2000);
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
-
-          // Helper: is this text a plain decimal number (with optional commas)?
           function isNumericText(t) {
             if (!t) return false;
-            const stripped = t.replace(/,/g, '').trim();
-            return /^\d+(\.\d+)?$/.test(stripped) && !stripped.startsWith('0237') && !stripped.startsWith('023');
+            const s = t.replace(/,/g, '').trim();
+            return /^\d+(\.\d+)?$/.test(s) && !s.startsWith('0237') && !s.startsWith('023');
           }
-
           for (let i = 0; i < spans.length; i++) {
             const t = spans[i].innerText?.trim();
             if (!t || t.length > 100) continue;
-
-            // Find "Remaining" label — check i-1, i-2 for the number
-            if (t === 'Remaining') {
-              for (let back = 1; back <= 3; back++) {
-                if (i - back >= 0) {
-                  const candidate = spans[i - back].innerText?.trim();
-                  if (isNumericText(candidate)) { remaining = candidate; break; }
-                }
-              }
-            }
-
-            // Find "Used" label — check i-1, i-2 for the number
-            if (t === 'Used') {
-              for (let back = 1; back <= 3; back++) {
-                if (i - back >= 0) {
-                  const candidate = spans[i - back].innerText?.trim();
-                  if (isNumericText(candidate)) { used = candidate; break; }
-                }
-              }
-            }
-
-            // Balance: "Current Balance" label then look forward for EGP number
-            if (t === 'Current Balance') {
-              for (let fwd = 1; fwd <= 5; fwd++) {
-                if (i + fwd < spans.length) {
-                  const candidate = spans[i + fwd].innerText?.trim();
-                  if (isNumericText(candidate)) { balance = candidate; break; }
-                }
-              }
-            }
-
-            // Plan: contains "GB" and "Speed"
+            if (t === 'Remaining') { for (let b=1;b<=3;b++) { const c=spans[i-b]?.innerText?.trim(); if(isNumericText(c)){remaining=c;break;} } }
+            if (t === 'Used')      { for (let b=1;b<=3;b++) { const c=spans[i-b]?.innerText?.trim(); if(isNumericText(c)){used=c;break;} } }
+            if (t === 'Current Balance') { for (let f=1;f<=5;f++) { const c=spans[i+f]?.innerText?.trim(); if(isNumericText(c)){balance=c;break;} } }
             if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
-
           if (!remaining) throw new Error('no remaining found');
           return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
         });
-        const parsed = {
-          remaining: stripNum(result.remaining),
-          used: stripNum(result.used) || 0,
-          balance: stripNum(result.balance) || 0,
-          plan: result.plan
-        };
+        const parsed = { remaining: stripNum(result.remaining), used: stripNum(result.used)||0, balance: stripNum(result.balance)||0, plan: result.plan };
         if (!parsed.remaining && parsed.remaining !== 0) throw new Error('no data after stripNum');
         console.log('    M1 numeric-only sibling scan');
         return parsed;
       },
-      // M2: innerText of whole page, regex number BEFORE label word (on same or adjacent line)
+      // M2: Full page text regex
       async () => {
         await sleep(5000);
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
-          // The page renders: "1,391.34\nRemaining" or "1,391.34 Remaining"
           const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
           const u = text.match(/([\d,]+\.?\d+)\s*\n?\s*Used/i);
-          const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)
-                 || text.match(/([\d,]+\.?\d+)\s*EGP/i);
+          const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i) || text.match(/([\d,]+\.?\d+)\s*EGP/i);
           const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
           if (!r) throw new Error('no remaining in page text');
-          return {
-            remaining: r[1],
-            used: u?.[1] || '0',
-            balance: b?.[1] || '0',
-            plan: p?.[0]?.trim() || 'Unknown'
-          };
+          return { remaining: r[1], used: u?.[1]||'0', balance: b?.[1]||'0', plan: p?.[0]?.trim()||'Unknown' };
         });
-        const parsed = {
-          remaining: stripNum(result.remaining),
-          used: stripNum(result.used) || 0,
-          balance: stripNum(result.balance) || 0,
-          plan: result.plan
-        };
+        const parsed = { remaining: stripNum(result.remaining), used: stripNum(result.used)||0, balance: stripNum(result.balance)||0, plan: result.plan };
         if (!parsed.remaining) throw new Error('no data M2');
-        console.log('    M2 page text regex number-before-label');
+        console.log('    M2 page text regex');
         return parsed;
       },
       // M3: HTML source regex fallback
@@ -957,12 +1002,7 @@ async function harvestQuota() {
         const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
         const b = html.match(/>([\d,]+\.?\d+)\s*EGP</i);
         if (!r) throw new Error('no data in html');
-        return {
-          remaining: stripNum(r[1]),
-          used: stripNum(u?.[1]) || 0,
-          balance: stripNum(b?.[1]) || 0,
-          plan: 'Unknown'
-        };
+        return { remaining: stripNum(r[1]), used: stripNum(u?.[1])||0, balance: stripNum(b?.[1])||0, plan: 'Unknown' };
       }
     ], 'EXTRACT', 30000);
 
