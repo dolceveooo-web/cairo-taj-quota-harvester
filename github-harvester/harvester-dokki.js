@@ -1199,18 +1199,31 @@ async function harvestQuota() {
         day: '2-digit', month: 'short', year: 'numeric',
         hour: '2-digit', minute: '2-digit'
       });
+
+      // Quota alert level
+      const rem = data.remaining;
+      let alertLine = '';
+      if (rem < 30)       alertLine = '\n🚨 *CRITICAL — Under 30 GB! Recharge immediately!*';
+      else if (rem < 50)  alertLine = '\n🔴 *CRITICAL — Under 50 GB!*';
+      else if (rem < 100) alertLine = '\n🟠 *WARNING — Under 100 GB*';
+
+      // Status icon based on level
+      const statusIcon = rem < 50 ? '🔴' : rem < 100 ? '🟠' : '✅';
+
       const msg = [
         '📡 *Cairo Taj — Dokki Harvest*',
         '',
-        `✅ Quota Remaining: *${data.remaining.toFixed(2)} GB*`,
+        `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
         `📉 Used: *${data.used.toFixed(2)} GB*`,
         `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
         `📋 Plan: ${data.plan}`,
         `🕐 ${date}`,
-        `🤖 GitHub Cloud ⚡ Dokki`
+        `🤖 GitHub Cloud ⚡ Dokki` + alertLine
       ].join('\n');
 
       const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+      // Send main harvest message
       const tgRes = await fetch(tgUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1222,6 +1235,31 @@ async function harvestQuota() {
       });
       if (!tgRes.ok) throw new Error(`Telegram HTTP ${tgRes.status}`);
       console.log('  ✓ Telegram sent!\n');
+
+      // CRITICAL ALERT: Under 30 GB — send a separate urgent message
+      // This triggers a second notification/ringtone on the phone
+      if (rem < 30) {
+        await fetch(tgUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: TELEGRAM_CHAT_ID,
+            text: [
+              '🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨',
+              '',
+              '⚠️ *Cairo Taj — Dokki*',
+              `📉 Only *${rem.toFixed(2)} GB* remaining!`,
+              '🔴 *ACTION REQUIRED: Recharge immediately!*',
+              '',
+              `🕐 ${date}`
+            ].join('\n'),
+            parse_mode: 'Markdown',
+            disable_notification: false  // Force notification sound
+          })
+        });
+        console.log('  🚨 Critical alert sent!\n');
+      }
+
     } catch (e) {
       // Telegram failure should NOT fail the whole harvest
       console.log('  ⚠ Telegram failed (non-critical):', e.message);
