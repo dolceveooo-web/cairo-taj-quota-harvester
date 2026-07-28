@@ -10,6 +10,7 @@ const WE_USERNAME = process.env.WE_USERNAME;
 const WE_PASSWORD = process.env.WE_PASSWORD;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TELEGRAM_GROUP_ID = process.env.TELEGRAM_GROUP_ID; // Group chat for colleague
 const MAX_RETRIES = 3;
 
 async function sleep(ms) {
@@ -1114,40 +1115,38 @@ async function harvestQuota() {
 
       const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
-      // Send main harvest message
-      const tgRes = await fetch(tgUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: TELEGRAM_CHAT_ID,
-          text: msg,
-          parse_mode: 'Markdown'
-        })
-      });
-      if (!tgRes.ok) throw new Error(`Telegram HTTP ${tgRes.status}`);
+      // Send main harvest message to personal chat AND group (if configured)
+      const recipients = [TELEGRAM_CHAT_ID];
+      if (TELEGRAM_GROUP_ID) recipients.push(TELEGRAM_GROUP_ID);
+
+      let tgSuccess = false;
+      for (const chatId of recipients) {
+        if (!chatId) continue;
+        const tgRes = await fetch(tgUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
+        });
+        if (tgRes.ok) { tgSuccess = true; }
+        else { console.log('  ⚠ Telegram to ' + chatId + ': HTTP ' + tgRes.status); }
+      }
+      if (!tgSuccess) throw new Error('All Telegram sends failed');
       console.log('  ✓ Telegram sent!\n');
 
       // CRITICAL ALERT: Under 30 GB — send a separate urgent message
       // This triggers a second notification/ringtone on the phone
       if (rem < 30) {
-        await fetch(tgUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: TELEGRAM_CHAT_ID,
-            text: [
-              '🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨',
-              '',
-              '⚠️ *Cairo Taj — Line 104*',
-              `📉 Only *${rem.toFixed(2)} GB* remaining!`,
-              '🔴 *ACTION REQUIRED: Recharge immediately!*',
-              '',
-              `🕐 ${date}`
-            ].join('\n'),
-            parse_mode: 'Markdown',
-            disable_notification: false  // Force notification sound
-          })
-        });
+        const criticalMsg = {
+          text: ['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*',
+            `📉 Only *${rem.toFixed(2)} GB* remaining!`, '🔴 *ACTION REQUIRED: Recharge immediately!*', '', `🕐 ${date}`].join('\n'),
+          parse_mode: 'Markdown',
+          disable_notification: false
+        };
+        for (const chatId of recipients) {
+          if (!chatId) continue;
+          await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...criticalMsg, chat_id: chatId }) });
+        }
         console.log('  🚨 Critical alert sent!\n');
       }
 
