@@ -70,6 +70,7 @@ jobs:
           WE_PASSWORD: ${{ secrets.WE_PASSWORD }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
         run: |
           echo "🚨 LOW QUOTA MODE — Running hourly harvest for Line 104"
           cd github-harvester
