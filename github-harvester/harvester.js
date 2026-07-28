@@ -859,6 +859,15 @@ async function harvestQuota() {
       // then check if a nearby sibling contains "Remaining" or "Used"
       async () => {
         await sleep(2000);
+        // Wait for balance card to load (extra wait if balance not yet visible)
+        await withTimeout(
+          page.waitForFunction(() => {
+            const text = document.body.innerText;
+            return text.includes('Current Balance') && /[\d,]+\.?\d+\s*EGP/.test(text);
+          }, { timeout: 8000 }),
+          9000, 'balance card wait'
+        ).catch(() => console.log('    [WARN] Balance card slow, proceeding anyway'));
+
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
@@ -896,7 +905,7 @@ async function harvestQuota() {
 
             // Balance: "Current Balance" label then look forward for EGP number
             if (t === 'Current Balance') {
-              for (let fwd = 1; fwd <= 5; fwd++) {
+              for (let fwd = 1; fwd <= 8; fwd++) {
                 if (i + fwd < spans.length) {
                   const candidate = spans[i + fwd].innerText?.trim();
                   if (isNumericText(candidate)) { balance = candidate; break; }
@@ -906,6 +915,14 @@ async function harvestQuota() {
 
             // Plan: contains "GB" and "Speed"
             if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
+          }
+
+          // Fallback: if balance still not found, try regex on full page text
+          if (!balance) {
+            const text = document.body.innerText;
+            const bMatch = text.match(/Current Balance\s*[\n\r\s]*([\d,]+\.?\d+)/i)
+                        || text.match(/([\d,]+\.?\d+)\s*EGP/i);
+            if (bMatch) balance = bMatch[1];
           }
 
           if (!remaining) throw new Error('no remaining found');
