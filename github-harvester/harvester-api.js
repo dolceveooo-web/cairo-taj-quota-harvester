@@ -43,7 +43,8 @@ function randomDelay(min, max) {
 
 // ── WE API: Step 1 — Init session (required before auth) ──────────
 async function weInit() {
-  await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
+  const res = await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
+  console.log('  [INIT] Status:', res.status, '| Header:', JSON.stringify(res.data?.header || {}).slice(0, 200));
   console.log('  ✓ WE API session initialized');
 }
 
@@ -53,7 +54,9 @@ async function weAuthenticate(acctId, password) {
     '/echannel/service/besapp/base/rest/busiservice/v1/auth/userAuthenticate',
     { acctId, appLocale: 'en-US', password }
   );
+  console.log('  [AUTH] Response header:', JSON.stringify(res.data.header));
   if (res.data.header.retCode !== '0') {
+    console.log('  [AUTH] Full response body:', JSON.stringify(res.data).slice(0, 500));
     throw new Error('WE auth failed: ' + (res.data.header.retMsg || res.data.header.retCode));
   }
   const { customer, subscriber, token } = res.data.body;
