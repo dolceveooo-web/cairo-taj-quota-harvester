@@ -7,6 +7,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const axios = require('axios');
+const { wrapper } = require('axios-cookiejar-support');
+const { CookieJar } = require('tough-cookie');
 
 const FIREBASE_API_KEY    = process.env.FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
@@ -18,9 +20,12 @@ const TELEGRAM_GROUP_ID   = process.env.TELEGRAM_GROUP_ID;
 
 const MAX_RETRIES = 3;
 
-// Create axios session with persistent headers (matches we-quota-checker exactly)
-const weSession = axios.create({
+// Create axios session with persistent cookie jar (matches browser session behavior)
+const jar = new CookieJar();
+const weSession = wrapper(axios.create({
   baseURL: 'https://api-my.te.eg',
+  jar,
+  withCredentials: true,
   headers: {
     'Accept':          'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
@@ -32,7 +37,7 @@ const weSession = axios.create({
     'isSelfcare':      'true',
     'languageCode':    'en-US'
   }
-});
+}));
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -43,7 +48,8 @@ function randomDelay(min, max) {
 }
 
 async function weInit() {
-  await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
+  const res = await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
+  console.log('  [INIT] Status:', res.status, '— cookies stored in jar');
   console.log('  ✓ WE API session initialized');
 }
 
