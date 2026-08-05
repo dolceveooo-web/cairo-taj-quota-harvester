@@ -11,9 +11,6 @@
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "puppeteer-core": "^21.0.0",
     "node-fetch": "^2.7.0",
-    "tesseract.js": "^5.0.0",
-    "axios": "^1.7.9",
-    "axios-cookiejar-support": "^4.0.7",
-    "tough-cookie": "^4.1.4"
+    "tesseract.js": "^5.0.0"
   }
 }
