@@ -55,9 +55,11 @@ async function weInit() {
 
 // ── WE API: Step 2 — Authenticate, returns { token, subscriberId, custName } ──
 async function weAuthenticate(acctId, password) {
+  const payload = { acctId, appLocale: 'en-US', password };
+  console.log('  [AUTH] Sending payload:', JSON.stringify({ acctId, appLocale: 'en-US', password: password ? '***' : 'EMPTY' }));
   const res = await weSession.post(
     '/echannel/service/besapp/base/rest/busiservice/v1/auth/userAuthenticate',
-    { acctId, appLocale: 'en-US', password }
+    payload
   );
   if (res.data.header.retCode !== '0') {
     console.log('  [AUTH] Response:', JSON.stringify(res.data.header));
@@ -198,6 +200,8 @@ async function harvestQuota() {
   // Build account ID: FBB + number without leading 0
   const acctId = 'FBB' + WE_USERNAME.replace(/^0/, '');
   console.log('  Account ID:', acctId);
+  console.log('  Username env var present:', !!WE_USERNAME, '| Length:', WE_USERNAME ? WE_USERNAME.length : 0);
+  console.log('  Password env var present:', !!WE_PASSWORD, '| Length:', WE_PASSWORD ? WE_PASSWORD.length : 0);
 
   // ── STEP 1: Init + Authenticate ──
   console.log('\nSTEP 1: WE API INIT + AUTH');
