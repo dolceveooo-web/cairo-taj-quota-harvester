@@ -6,6 +6,8 @@
 // ═══════════════════════════════════════════════════════════════════
 
 const axios = require('axios');
+const { wrapper } = require('axios-cookiejar-support');
+const { CookieJar } = require('tough-cookie');
 
 const FIREBASE_API_KEY    = process.env.FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
@@ -17,9 +19,12 @@ const TELEGRAM_GROUP_ID   = process.env.TELEGRAM_GROUP_ID;
 
 const MAX_RETRIES = 3;
 
-// Create axios session with persistent headers (matches we-quota-checker exactly)
-const weSession = axios.create({
+// Create axios session with persistent cookie jar (matches browser session behavior)
+const jar = new CookieJar();
+const weSession = wrapper(axios.create({
   baseURL: 'https://api-my.te.eg',
+  jar,
+  withCredentials: true,
   headers: {
     'Accept':          'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
@@ -31,7 +36,7 @@ const weSession = axios.create({
     'isSelfcare':      'true',
     'languageCode':    'en-US'
   }
-});
+}));
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -44,13 +49,7 @@ function randomDelay(min, max) {
 // ── WE API: Step 1 — Init session (required before auth) ──────────
 async function weInit() {
   const res = await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
-  console.log('  [INIT] Status:', res.status);
-  console.log('  [INIT] Full response:', JSON.stringify(res.data).slice(0, 500));
-  // Check if querySysParams returns cookies or tokens we need to store
-  const setCookie = res.headers['set-cookie'];
-  if (setCookie) {
-    console.log('  [INIT] Set-Cookie received:', setCookie.toString().slice(0, 200));
-  }
+  console.log('  [INIT] Status:', res.status, '— cookies stored in jar');
   console.log('  ✓ WE API session initialized');
 }
 
@@ -60,9 +59,8 @@ async function weAuthenticate(acctId, password) {
     '/echannel/service/besapp/base/rest/busiservice/v1/auth/userAuthenticate',
     { acctId, appLocale: 'en-US', password }
   );
-  console.log('  [AUTH] Response header:', JSON.stringify(res.data.header));
   if (res.data.header.retCode !== '0') {
-    console.log('  [AUTH] Full response body:', JSON.stringify(res.data).slice(0, 500));
+    console.log('  [AUTH] Response:', JSON.stringify(res.data.header));
     throw new Error('WE auth failed: ' + (res.data.header.retMsg || res.data.header.retCode));
   }
   const { customer, subscriber, token } = res.data.body;
