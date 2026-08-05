@@ -44,7 +44,13 @@ function randomDelay(min, max) {
 // ── WE API: Step 1 — Init session (required before auth) ──────────
 async function weInit() {
   const res = await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
-  console.log('  [INIT] Status:', res.status, '| Header:', JSON.stringify(res.data?.header || {}).slice(0, 200));
+  console.log('  [INIT] Status:', res.status);
+  console.log('  [INIT] Full response:', JSON.stringify(res.data).slice(0, 500));
+  // Check if querySysParams returns cookies or tokens we need to store
+  const setCookie = res.headers['set-cookie'];
+  if (setCookie) {
+    console.log('  [INIT] Set-Cookie received:', setCookie.toString().slice(0, 200));
+  }
   console.log('  ✓ WE API session initialized');
 }
 
