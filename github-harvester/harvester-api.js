@@ -42,9 +42,10 @@ async function sleep(ms) {
 // Step 1: Get initial JWT token
 async function getToken() {
   const res = await session.get(WE_BASE + '/api/user/generatetoken?channelId=WEB_APP');
-  console.log('  [TOKEN] retCode:', res.data?.header?.responseCode);
+  console.log('  [TOKEN] Status:', res.status);
+  console.log('  [TOKEN] Full response:', JSON.stringify(res.data).slice(0, 400));
   if (String(res.data?.header?.responseCode) !== '0') {
-    throw new Error('generatetoken failed: ' + res.data?.header?.responseMessage);
+    throw new Error('generatetoken failed: ' + JSON.stringify(res.data?.header));
   }
   const jwt = res.data.body.jwt;
   session.defaults.headers['Jwt'] = jwt;
