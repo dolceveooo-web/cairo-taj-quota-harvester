@@ -66,9 +66,9 @@ async function harvestQuota() {
       const cookieStr = doc?.fields?.cookies?.stringValue;
       const savedAt = doc?.fields?.savedAt?.stringValue;
       if (!cookieStr || !savedAt) return null;
-      // Use cookies saved within last 23 hours (extended from 4h to reduce login frequency)
+      // Only use cookies saved within last 4 hours
       const age = Date.now() - new Date(savedAt).getTime();
-      if (age > 23 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>23h old), will do fresh login'); return null; }
+      if (age > 4 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>4h old), will do fresh login'); return null; }
       console.log('  [SESSION] Found saved cookies (' + Math.floor(age/60000) + 'm old)');
       return JSON.parse(cookieStr);
     } catch(e) { console.log('  [SESSION] Could not load cookies:', e.message); return null; }
@@ -163,8 +163,6 @@ async function harvestQuota() {
         if (isLoggedIn) {
           sessionValid = true;
           console.log('  ✓ Session still valid! Skipping login entirely.\n');
-          // Keep-alive: refresh savedAt so the 23h clock resets on each successful reuse
-          await saveCookies(savedCookies);
         } else {
           console.log('  ✗ Session expired, clearing and doing fresh login');
           await clearCookies();
