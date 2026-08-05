@@ -829,7 +829,6 @@ async function harvestQuota() {
         throw new Error('CAPTCHA_UNSOLVED: ' + subCount + '/4 attempts. Next run will retry fresh.');
       }
     }
-    }
 
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
@@ -1740,3 +1739,4 @@ async function main() {
 }
 
 main();
+
