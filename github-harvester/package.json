@@ -12,6 +12,6 @@
     "puppeteer-core": "^21.0.0",
     "node-fetch": "^2.7.0",
     "tesseract.js": "^5.0.0",
-    "jimp": "^0.22.12"
+    "axios": "^1.7.9"
   }
 }
