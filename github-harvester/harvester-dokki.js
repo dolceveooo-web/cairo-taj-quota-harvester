@@ -347,10 +347,10 @@ async function harvestQuota() {
     console.log('  [HUMAN] pause', delay2, 'ms');
     await sleep(delay2);
 
-    // Wait for dropdown to appear after username triggers React re-render
-    console.log('  Waiting for dropdown to appear...');
+    // Wait for dropdown/search input to appear after username triggers React re-render
+    console.log('  Waiting for service type input to appear...');
     await withTimeout(
-      page.waitForFunction(() => !!document.querySelector('.ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
+      page.waitForFunction(() => !!document.querySelector('#login_input_type_01, .ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
       16000, 'dropdown appearance'
     ).catch(() => console.log('  [WARN] Dropdown wait timed out, proceeding anyway'));
     await sleep(1000);
@@ -359,8 +359,9 @@ async function harvestQuota() {
     const dropdownDiag = await withTimeout(page.evaluate(() => ({
       antSelect: !!document.querySelector('.ant-select'),
       antSelectSelector: !!document.querySelector('.ant-select-selector'),
+      searchInput: !!document.querySelector('#login_input_type_01'),
       anySelect: !!document.querySelector('[class*="select"]'),
-      selectText: document.querySelector('.ant-select-selector')?.innerText || null
+      selectText: document.querySelector('.ant-select-selector')?.innerText || document.querySelector('#login_input_type_01')?.value || null
     })), 5000, 'dropdown diag').catch(() => null);
     console.log('  Dropdown state:', JSON.stringify(dropdownDiag));
 
@@ -368,68 +369,126 @@ async function harvestQuota() {
     console.log('STEP 3: DROPDOWN');
     // ======================================
     await tryMethods([
+      // M1: New search-input style (#login_input_type_01) â€” WE updated portal
+      async () => {
+        const searchInput = await page.$('#login_input_type_01');
+        if (!searchInput) throw new Error('search input not found');
+        await searchInput.click();
+        await sleep(500);
+        // Clear and type Internet to trigger dropdown options
+        await searchInput.evaluate(el => { el.value = ''; el.dispatchEvent(new Event('input', { bubbles: true })); });
+        await searchInput.type('Internet', { delay: 80 });
+        await sleep(1000);
+        // Click the Internet option from dropdown list
+        const clicked = await page.evaluate(() => {
+          const opts = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [class*="option"]'));
+          const internet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
+          if (internet) { internet.click(); return internet.textContent.trim(); }
+          // Fallback: press Enter if no clickable option found
+          return null;
+        });
+        if (!clicked) {
+          await page.keyboard.press('ArrowDown');
+          await sleep(300);
+          await page.keyboard.press('Enter');
+          console.log('    M1: search input + ArrowDown + Enter');
+        } else {
+          console.log('    M1: search input + clicked:', clicked);
+        }
+        await sleep(800);
+        // Verify selection registered
+        const val = await page.evaluate(() => {
+          const sel = document.querySelector('.ant-select-selector')?.innerText || '';
+          const inp = document.querySelector('#login_input_type_01')?.value || '';
+          return sel + inp;
+        });
+        if (!val.toLowerCase().includes('internet')) throw new Error('Internet not selected, got: ' + val);
+      },
+      // M2: Classic ant-select click + find option
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
         const dropdown = await page.$('.ant-select-selector, .ant-select');
-        if (!dropdown) throw new Error('dropdown not found after wait');
+        if (!dropdown) throw new Error('dropdown not found');
         await dropdown.click();
         await sleep(1500);
         const clicked = await page.evaluate(() => {
           const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
-          const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
+          const internet = items.find(i => i.textContent?.toLowerCase().includes('internet'));
           if (internet) { internet.click(); return internet.textContent.trim(); }
           return null;
         });
         if (!clicked) throw new Error('Internet option not found');
-        console.log('    waitForFunction + click, selected:', clicked);
+        console.log('    M2: ant-select click, selected:', clicked);
         await sleep(500);
       },
+      // M3: Tab from username field + type Internet + Enter
       async () => {
-        await page.waitForSelector('.ant-select-selector', { timeout: 10000 });
-        await sleep(500);
-        await page.click('.ant-select-selector');
-        await sleep(1500);
-        await page.evaluate(() => {
-          for (let el of document.querySelectorAll('.ant-select-item-option, li, div')) {
-            if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
-          }
+        await page.keyboard.press('Tab');
+        await sleep(800);
+        // Clear existing value
+        await page.keyboard.down('Control');
+        await page.keyboard.press('a');
+        await page.keyboard.up('Control');
+        await sleep(200);
+        await page.keyboard.type('Internet', { delay: 80 });
+        await sleep(800);
+        // Click visible option or press ArrowDown + Enter
+        const clicked = await page.evaluate(() => {
+          const opts = Array.from(document.querySelectorAll('.ant-select-item-option, li, [class*="option"]'));
+          const internet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
+          if (internet) { internet.click(); return true; }
+          return false;
         });
-        console.log('    waitForSelector + click');
+        if (!clicked) {
+          await page.keyboard.press('ArrowDown');
+          await sleep(200);
+          await page.keyboard.press('Enter');
+        }
+        console.log('    M3: Tab + type Internet + select');
         await sleep(500);
       },
+      // M4: evaluate native setter on search input
       async () => {
-        await page.waitForSelector('.ant-select', { timeout: 10000 });
-        await page.click('.ant-select');
-        await sleep(1500);
-        await page.keyboard.press('ArrowDown');
-        await sleep(300);
-        await page.keyboard.press('Enter');
-        console.log('    click + arrow + enter');
-      },
-      async () => {
-        await sleep(2000);
-        await page.evaluate(() => { document.querySelector('.ant-select-selector')?.click(); });
-        await sleep(2000);
-        await page.evaluate(() => {
-          for (let el of document.querySelectorAll('li, div, span')) {
-            if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
-          }
+        const ok = await page.evaluate(() => {
+          const inp = document.querySelector('#login_input_type_01') ||
+                      document.querySelector('input[type="search"]') ||
+                      document.querySelector('.ant-select-selection-search-input');
+          if (!inp) return false;
+          inp.focus();
+          const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+          setter.call(inp, 'Internet');
+          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          inp.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
         });
-        console.log('    evaluate click + broad search');
+        if (!ok) throw new Error('native setter failed');
+        await sleep(1000);
+        await page.evaluate(() => {
+          const opts = Array.from(document.querySelectorAll('.ant-select-item-option, li, [class*="option"], div'));
+          const internet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
+          if (internet) internet.click();
+        });
+        await sleep(500);
+        console.log('    M4: native setter on search input');
       },
+      // M5: broad click any select + type
       async () => {
         await sleep(2000);
         const els = await page.$$('[class*="select"]');
-        if (els.length) { await els[0].click(); await sleep(2000); }
-        await page.keyboard.type('Internet');
-        await sleep(500);
+        if (els.length) { await els[0].click(); await sleep(1500); }
+        await page.keyboard.type('Internet', { delay: 80 });
+        await sleep(800);
+        await page.keyboard.press('ArrowDown');
+        await sleep(300);
         await page.keyboard.press('Enter');
-        console.log('    generic selector + type');
+        console.log('    M5: broad select + type + enter');
+        await sleep(500);
       }
-    ], 'DROPDOWN', 20000);
+    ], 'DROPDOWN', 25000);
 
     console.log('  [OK] Dropdown done\n');
+
 
     // Human-like pause before password
     const delay3 = randomDelay(5000, 8000);
@@ -1595,15 +1654,28 @@ async function harvestQuota() {
         await sleep(2000);
         await page.type('#login_loginid_input_01', WE_USERNAME, { delay: randomDelay(100, 180) });
         await sleep(randomDelay(4000, 6000));
-        await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 12000 }).catch(() => {});
+        // Dropdown — supports both new search-input style and old ant-select
+        await page.waitForFunction(() => !!document.querySelector('#login_input_type_01, .ant-select-selector, .ant-select'), { timeout: 12000 }).catch(() => {});
         await sleep(500);
-        const dd = await page.$('.ant-select-selector, .ant-select');
-        if (dd) { await dd.click(); await sleep(1500); }
-        await page.evaluate(() => {
-          for (const el of document.querySelectorAll('.ant-select-item-option, li')) {
-            if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
-          }
-        });
+        const ddSearch = await page.$('#login_input_type_01');
+        if (ddSearch) {
+          await ddSearch.click(); await sleep(500);
+          await ddSearch.type('Internet', { delay: 80 }); await sleep(800);
+          const clicked = await page.evaluate(() => {
+            const opts = Array.from(document.querySelectorAll('.ant-select-item-option, li, [class*="option"]'));
+            const inet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
+            if (inet) { inet.click(); return true; } return false;
+          });
+          if (!clicked) { await page.keyboard.press('ArrowDown'); await sleep(200); await page.keyboard.press('Enter'); }
+        } else {
+          const dd = await page.$('.ant-select-selector, .ant-select');
+          if (dd) { await dd.click(); await sleep(1500); }
+          await page.evaluate(() => {
+            for (const el of document.querySelectorAll('.ant-select-item-option, li')) {
+              if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
+            }
+          });
+        }
         await sleep(randomDelay(4000, 6000));
         await page.focus('#login_password_input_01').catch(() => {});
         await sleep(2000);
