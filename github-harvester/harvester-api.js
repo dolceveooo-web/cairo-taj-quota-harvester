@@ -1,8 +1,8 @@
 // ═══════════════════════════════════════════════════════════════════
-// Cairo Taj — Line 104 (Mohandessin) — API-BASED HARVESTER
-// Uses WE Egypt's REST API directly — no browser, no Puppeteer,
-// no captcha, no login blocks. Pure HTTP calls.
-// Based on working we-quota-checker npm package implementation.
+// Cairo Taj — Line 104 (Mohandessin) — API-BASED HARVESTER v2
+// Uses WE Egypt's proven REST API (older endpoint, confirmed working)
+// Flow: generatetoken → status → login → freeunitusage
+// No browser, no Puppeteer, no captcha, no login blocks.
 // ═══════════════════════════════════════════════════════════════════
 
 const axios = require('axios');
@@ -11,7 +11,7 @@ const { CookieJar } = require('tough-cookie');
 
 const FIREBASE_API_KEY    = process.env.FIREBASE_API_KEY;
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID;
-const WE_USERNAME         = process.env.WE_USERNAME;   // e.g. 0237483361
+const WE_USERNAME         = process.env.WE_USERNAME;
 const WE_PASSWORD         = process.env.WE_PASSWORD;
 const TELEGRAM_BOT_TOKEN  = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID    = process.env.TELEGRAM_CHAT_ID;
@@ -19,22 +19,17 @@ const TELEGRAM_GROUP_ID   = process.env.TELEGRAM_GROUP_ID;
 
 const MAX_RETRIES = 3;
 
-// Create axios session with persistent cookie jar (matches browser session behavior)
+const WE_BASE = 'https://api-my.te.eg';
+
+// Create session with cookie jar
 const jar = new CookieJar();
-const weSession = wrapper(axios.create({
-  baseURL: 'https://api-my.te.eg',
+const session = wrapper(axios.create({
   jar,
   withCredentials: true,
   headers: {
-    'Accept':          'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-    'Content-Type':    'application/json',
-    'User-Agent':      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    'channelId':       '702',
-    'isCoporate':      'false',
-    'isMobile':        'false',
-    'isSelfcare':      'true',
-    'languageCode':    'en-US'
+    'Content-Type': 'application/json',
+    'Accept':       'application/json',
+    'User-Agent':   'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36'
   }
 }));
 
@@ -42,70 +37,109 @@ async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function randomDelay(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
-}
+// ── WE API Flow ────────────────────────────────────────────────────
 
-// ── WE API: Step 1 — Init session (required before auth) ──────────
-async function weInit() {
-  const res = await weSession.post('/echannel/service/besapp/base/rest/busiservice/v1/common/querySysParams', {});
-  console.log('  [INIT] Status:', res.status, '— cookies stored in jar');
-  console.log('  ✓ WE API session initialized');
-}
-
-// ── WE API: Step 2 — Authenticate, returns { token, subscriberId, custName } ──
-async function weAuthenticate(acctId, password) {
-  const payload = { acctId, appLocale: 'en-US', password };
-  console.log('  [AUTH] Sending payload:', JSON.stringify({ acctId, appLocale: 'en-US', password: password ? '***' : 'EMPTY' }));
-  const res = await weSession.post(
-    '/echannel/service/besapp/base/rest/busiservice/v1/auth/userAuthenticate',
-    payload
-  );
-  if (res.data.header.retCode !== '0') {
-    console.log('  [AUTH] Response:', JSON.stringify(res.data.header));
-    throw new Error('WE auth failed: ' + (res.data.header.retMsg || res.data.header.retCode));
+// Step 1: Get initial JWT token
+async function getToken() {
+  const res = await session.get(WE_BASE + '/api/user/generatetoken?channelId=WEB_APP');
+  console.log('  [TOKEN] retCode:', res.data?.header?.responseCode);
+  if (String(res.data?.header?.responseCode) !== '0') {
+    throw new Error('generatetoken failed: ' + res.data?.header?.responseMessage);
   }
-  const { customer, subscriber, token } = res.data.body;
-  console.log('  ✓ Authenticated as:', customer.custName);
-  return { token, subscriberId: subscriber.subscriberId, custName: customer.custName };
+  const jwt = res.data.body.jwt;
+  session.defaults.headers['Jwt'] = jwt;
+  console.log('  ✓ JWT token obtained');
+  return jwt;
 }
 
-// ── WE API: Step 3 — Get main offer ID ─────────────────────────────
-async function weGetOfferId(acctId, token) {
-  const res = await weSession.post(
-    '/echannel/service/besapp/base/rest/busiservice/cz/v1/auth/getSubscribedOfferings',
-    { msisdn: acctId, numberServiceType: 'FBB', groupId: '' },
-    { headers: { csrftoken: token } }
-  );
-  if (res.data.header.retCode !== '0') {
-    throw new Error('WE offerings failed: ' + res.data.header.retCode);
+// Step 2: Get status (returns timestamp needed for login)
+async function getStatus(msisdn) {
+  const res = await session.post(WE_BASE + '/api/user/status', {
+    header: { timestamp: 0, customerId: '', msisdn, messageCode: '', locale: 'En' },
+    body: {}
+  });
+  console.log('  [STATUS] retCode:', res.data?.header?.responseCode);
+  if (String(res.data?.header?.responseCode) !== '0') {
+    throw new Error('status failed: ' + res.data?.header?.responseMessage);
   }
-  const offerId = res.data.body.offeringList[0].mainOfferingId;
-  console.log('  ✓ Offer ID:', offerId);
-  return offerId;
+  const timestamp = res.data.header.timstamp; // note: WE API has typo 'timstamp'
+  console.log('  ✓ Status obtained, timestamp:', timestamp);
+  return timestamp;
 }
 
-// ── WE API: Step 4 — Get quota details ────────────────────────────
-async function weGetQuota(token, subscriberId, offerId) {
-  const res = await weSession.post(
-    '/echannel/service/besapp/base/rest/busiservice/cz/cbs/bb/queryFreeUnit',
-    { subscriberId, mainOfferId: offerId },
-    { headers: { csrftoken: token } }
-  );
-  if (res.data.header.retCode !== '0') {
-    throw new Error('WE quota failed: ' + res.data.header.retCode);
+// Step 3: Login with msisdn + timestamp + password
+async function login(msisdn, password, timestamp) {
+  const res = await session.post(WE_BASE + '/api/user/login?channelId=WEB_APP', {
+    header: { msisdn, timestamp: String(timestamp), locale: 'En' },
+    body:   { password }
+  });
+  console.log('  [LOGIN] retCode:', res.data?.header?.responseCode);
+  if (String(res.data?.header?.responseCode) !== '0') {
+    throw new Error('login failed: ' + res.data?.header?.responseMessage);
   }
-  const q = res.data.body[0];
-  return {
-    remaining: q.remain,
-    used:      q.used,
-    total:     q.total,
-    plan:      q.offerName || 'Unknown',
-    balance:   q.balance   || 0
-  };
+  // Update JWT with the new post-login JWT
+  const newJwt = res.data.body.jwt;
+  const customerId = res.data.header.customerId;
+  session.defaults.headers['Jwt'] = newJwt;
+  console.log('  ✓ Logged in! customerId:', customerId);
+  return { customerId, jwt: newJwt };
 }
 
-// ── Firestore: write quota_latest/current (Line 104 field only) ───
+// Step 4: Get quota data
+async function getFreeUnitUsage(msisdn, customerId) {
+  const res = await session.post(WE_BASE + '/api/line/freeunitusage', {
+    header: { customerId, msisdn, locale: 'En' },
+    body:   {}
+  });
+  console.log('  [QUOTA] retCode:', res.data?.header?.responseCode);
+  if (String(res.data?.header?.responseCode) !== '0') {
+    throw new Error('freeunitusage failed: ' + res.data?.header?.responseMessage);
+  }
+  const body = res.data.body;
+  console.log('  [QUOTA] Raw body:', JSON.stringify(body).slice(0, 300));
+  return body;
+}
+
+// ── Parse quota data from response ────────────────────────────────
+function parseQuotaData(body) {
+  // Find the main internet bundle
+  let remaining = 0, used = 0, total = 0, plan = 'Unknown', balance = 0;
+
+  // Try different response structures
+  if (body.freeUnitUsageList) {
+    const units = body.freeUnitUsageList;
+    for (const unit of units) {
+      if (unit.usedUnit !== undefined && unit.remainingUnit !== undefined) {
+        remaining = parseFloat(unit.remainingUnit) || 0;
+        used = parseFloat(unit.usedUnit) || 0;
+        total = remaining + used;
+        plan = unit.offerName || unit.bundleName || 'Unknown';
+        break;
+      }
+    }
+  } else if (body.bundleList) {
+    const bundle = body.bundleList[0];
+    remaining = parseFloat(bundle.remainingData || bundle.remaining || 0);
+    used = parseFloat(bundle.usedData || bundle.used || 0);
+    total = remaining + used;
+    plan = bundle.name || bundle.offerName || 'Unknown';
+  } else if (body.remain !== undefined) {
+    remaining = parseFloat(body.remain) || 0;
+    used = parseFloat(body.used) || 0;
+    total = parseFloat(body.total) || remaining + used;
+    plan = body.offerName || 'Unknown';
+    balance = parseFloat(body.balance) || 0;
+  }
+
+  // Try to get balance from accountBalance
+  if (body.accountBalance !== undefined) {
+    balance = parseFloat(body.accountBalance) || balance;
+  }
+
+  return { remaining, used, total, plan, balance };
+}
+
+// ── Firestore write ────────────────────────────────────────────────
 async function firestoreWrite(data, updatedBy) {
   const now = new Date().toISOString();
   const fields = {
@@ -124,11 +158,9 @@ async function firestoreWrite(data, updatedBy) {
   const mask = 'updateMask.fieldPaths=%60104%60&updateMask.fieldPaths=lastUpdate';
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}&${mask}`;
   await axios.patch(url, { fields });
-  console.log('  ✓ Firestore updated (quota_latest/current → 104)');
-  return now;
+  console.log('  ✓ Firestore updated → 104');
 }
 
-// ── Firestore: append to quota_history ledger ──────────────────────
 async function firestoreLedger(data, updatedBy, notes) {
   const now = new Date().toISOString();
   const fields = {
@@ -141,106 +173,87 @@ async function firestoreLedger(data, updatedBy, notes) {
   };
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_history?key=${FIREBASE_API_KEY}`;
   await axios.post(url, { fields });
-  console.log('  ✓ Ledger entry added (quota_history)');
+  console.log('  ✓ Ledger entry added');
 }
 
-// ── Firestore: update low-quota alert flag ─────────────────────────
 async function firestoreFlag(remaining) {
   const now = new Date().toISOString();
   const isLow = remaining < 100;
   const fields = {
-    line104_low:        { booleanValue: isLow },
-    line104_quota:      { doubleValue: remaining },
-    line104_updatedAt:  { stringValue: now }
+    line104_low:       { booleanValue: isLow },
+    line104_quota:     { doubleValue: remaining },
+    line104_updatedAt: { stringValue: now }
   };
   const mask = 'updateMask.fieldPaths=line104_low&updateMask.fieldPaths=line104_quota&updateMask.fieldPaths=line104_updatedAt';
   const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${mask}`;
   await axios.patch(url, { fields });
-  console.log('  ✓ Alert flag: line104_low=' + isLow + ' (' + remaining.toFixed(1) + ' GB)');
+  console.log('  ✓ Alert flag: line104_low=' + isLow);
 }
 
-// ── Telegram: send message to all recipients ───────────────────────
+// ── Telegram ───────────────────────────────────────────────────────
 async function telegramSend(text) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
   const recipients = [TELEGRAM_CHAT_ID, TELEGRAM_GROUP_ID].filter(Boolean);
   for (const chatId of recipients) {
     try {
       await axios.post(url, { chat_id: chatId, text, parse_mode: 'Markdown' });
-    } catch(e) { 
-      console.log('  ⚠ Telegram error:', e.message); 
-    }
+    } catch(e) { console.log('  ⚠ Telegram error:', e.message); }
   }
 }
 
-// ── Build Telegram message ─────────────────────────────────────────
-function buildTelegramMsg(data, label, extraLine) {
-  const rem = data.remaining;
-  const date = new Date().toLocaleString('en-GB', {
-    timeZone: 'Africa/Cairo', day: '2-digit', month: 'short',
-    year: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
-  const icon = rem < 50 ? '🔴' : rem < 100 ? '🟠' : '✅';
-  const lines = [
-    '📡 *Cairo Taj — ' + label + '*',
-    '',
-    icon + ' Quota Remaining: *' + rem.toFixed(2) + ' GB*',
-    '📉 Used: *' + data.used.toFixed(2) + ' GB*',
-    '💰 Balance: *' + (data.balance || 0).toFixed(2) + ' EGP*',
-    '📋 Plan: ' + data.plan,
-    '🕐 ' + date,
-    extraLine || ''
-  ].filter(x => x !== '');
-  return lines.join('\n');
-}
-
-// ── MAIN HARVEST FUNCTION ──────────────────────────────────────────
+// ── MAIN HARVEST ───────────────────────────────────────────────────
 async function harvestQuota() {
-  console.log('🚀 STARTING API HARVEST — Line 104 (Mohandessin)\n');
+  console.log('🚀 STARTING API HARVEST v2 — Line 104 (Mohandessin)\n');
+  console.log('  Username:', WE_USERNAME, '| Password length:', WE_PASSWORD ? WE_PASSWORD.length : 0);
 
-  // Build account ID: FBB + number without leading 0
-  const acctId = 'FBB' + WE_USERNAME.replace(/^0/, '');
-  console.log('  Account ID:', acctId);
-  console.log('  Username env var present:', !!WE_USERNAME, '| Length:', WE_USERNAME ? WE_USERNAME.length : 0);
-  console.log('  Password env var present:', !!WE_PASSWORD, '| Length:', WE_PASSWORD ? WE_PASSWORD.length : 0);
+  // Step 1-3: Authenticate
+  console.log('\nSTEP 1: AUTHENTICATE');
+  await getToken();
+  await sleep(500);
+  const timestamp = await getStatus(WE_USERNAME);
+  await sleep(500);
+  const { customerId } = await login(WE_USERNAME, WE_PASSWORD, timestamp);
 
-  // ── STEP 1: Init + Authenticate ──
-  console.log('\nSTEP 1: WE API INIT + AUTH');
-  await weInit();
-  await sleep(randomDelay(500, 1000));
-  const { token, subscriberId, custName } = await weAuthenticate(acctId, WE_PASSWORD);
-
-  // ── STEP 2: Get offer + quota ──
+  // Step 4: Get quota
   console.log('\nSTEP 2: FETCH QUOTA');
-  await sleep(randomDelay(500, 1000));
-  const offerId = await weGetOfferId(acctId, token);
-  await sleep(randomDelay(500, 1000));
-  const data = await weGetQuota(token, subscriberId, offerId);
+  await sleep(500);
+  const body = await getFreeUnitUsage(WE_USERNAME, customerId);
+  const data = parseQuotaData(body);
 
-  console.log('  Remaining: ' + data.remaining + ' GB');
+  console.log('\n  Remaining: ' + data.remaining + ' GB');
   console.log('  Used:      ' + data.used + ' GB');
   console.log('  Total:     ' + data.total + ' GB');
-  console.log('  Balance:   ' + (data.balance || 0) + ' EGP');
+  console.log('  Balance:   ' + data.balance + ' EGP');
   console.log('  Plan:      ' + data.plan);
 
-  // ── STEP 3: Firestore ──
+  // Step 5: Firestore
   console.log('\nSTEP 3: FIRESTORE');
   await firestoreWrite(data, 'API Harvester ⚡ Line 104');
   await firestoreLedger(data, 'API Harvester ⚡ Line 104', '');
   await firestoreFlag(data.remaining);
 
-  // ── STEP 4: Telegram ──
+  // Step 6: Telegram
   console.log('\nSTEP 4: TELEGRAM');
   const rem = data.remaining;
-  let extraLine = '';
-  if (rem < 30)       extraLine = '\n🚨 *CRITICAL — Under 30 GB! Recharge immediately!*';
-  else if (rem < 50)  extraLine = '\n🔴 *CRITICAL — Under 50 GB!*';
-  else if (rem < 100) extraLine = '\n🟠 *WARNING — Under 100 GB*';
-  const msg = buildTelegramMsg(data, 'Line 104 Harvest (API)', extraLine ? extraLine.trim() : '🤖 API Harvester ⚡');
+  const date = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const icon = rem < 50 ? '🔴' : rem < 100 ? '🟠' : '✅';
+  let extra = '';
+  if (rem < 30)       extra = '\n🚨 *CRITICAL — Under 30 GB! Recharge immediately!*';
+  else if (rem < 50)  extra = '\n🔴 *CRITICAL — Under 50 GB!*';
+  else if (rem < 100) extra = '\n🟠 *WARNING — Under 100 GB*';
+  const msg = [
+    '📡 *Cairo Taj — Line 104 Harvest (API v2)*',
+    '',
+    icon + ' Quota Remaining: *' + rem.toFixed(2) + ' GB*',
+    '📉 Used: *' + data.used.toFixed(2) + ' GB*',
+    '💰 Balance: *' + data.balance.toFixed(2) + ' EGP*',
+    '📋 Plan: ' + data.plan,
+    '🕐 ' + date,
+    '🤖 API Harvester ⚡' + extra
+  ].join('\n');
   await telegramSend(msg);
-  // Double-ring under 30 GB
   if (rem < 30) {
-    const date = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-    await telegramSend(['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*', '📉 Only *' + rem.toFixed(2) + ' GB* remaining!', '🔴 *ACTION REQUIRED: Recharge immediately!*', '', '🕐 ' + date].join('\n'));
+    await telegramSend(['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*', '📉 Only *' + rem.toFixed(2) + ' GB* remaining!', '🔴 *Recharge immediately!*', '', '🕐 ' + date].join('\n'));
   }
   console.log('  ✓ Telegram sent');
 
@@ -248,124 +261,62 @@ async function harvestQuota() {
   console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-  // ══════════════════════════════════════════════════════════════
-  // VIGILANCE MODE — quota ≤ 50 GB
-  // Same token stays valid — just re-call the quota API every 13min
-  // Zero extra logins, zero blocks
-  // ══════════════════════════════════════════════════════════════
+  // Vigilance mode
   if (data.remaining <= 50) {
-    console.log('\n🔴 VIGILANCE MODE ACTIVATED — ' + data.remaining.toFixed(2) + ' GB ≤ 50 GB');
-    console.log('  Every 13 min, re-fetching via API (same token). Stops at ≤ 2 GB or 5h45m.\n');
-
-    const INTERVAL    = 13 * 60 * 1000;
+    console.log('\n🔴 VIGILANCE MODE — ' + data.remaining.toFixed(2) + ' GB ≤ 50 GB');
+    const INTERVAL = 13 * 60 * 1000;
     const MAX_ELAPSED = 5 * 60 * 60 * 1000 + 45 * 60 * 1000;
-    const STOP_GB     = 2;
-    const startTime   = Date.now();
-    let   round       = 0;
-    let   lastRem     = data.remaining;
-    let   vToken      = token;
-    let   vSubscriber = subscriberId;
-    let   vOfferId    = offerId;
-
-    // Re-authenticate when token expires
-    async function vigilanceReauth() {
-      console.log('  [VIGILANCE] Re-authenticating (token refresh)...');
-      await weInit();
-      await sleep(randomDelay(500, 1000));
-      const auth = await weAuthenticate(acctId, WE_PASSWORD);
-      vToken      = auth.token;
-      vSubscriber = auth.subscriberId;
-      vOfferId    = await weGetOfferId(acctId, vToken);
-      console.log('  [VIGILANCE] Token refreshed ✓');
-    }
+    const STOP_GB = 2;
+    const startTime = Date.now();
+    let round = 0, lastRem = data.remaining;
+    let vCustomerId = customerId;
 
     while (true) {
-      const elapsed = Date.now() - startTime;
-      if (elapsed >= MAX_ELAPSED) {
-        console.log('\n[VIGILANCE] 5h 45m cap reached — stopping.');
-        break;
-      }
-
+      if (Date.now() - startTime >= MAX_ELAPSED) { console.log('\n[VIGILANCE] Time cap reached.'); break; }
       console.log('\n[VIGILANCE] Waiting 13 minutes...');
       await sleep(INTERVAL);
       round++;
       const elapsedMin = Math.floor((Date.now() - startTime) / 60000);
-      console.log('\n' + '═'.repeat(50));
-      console.log('⚡ VIGILANCE ROUND #' + round + ' — Line 104 (' + elapsedMin + 'min elapsed)');
-      console.log('═'.repeat(50));
-
+      console.log('⚡ VIGILANCE ROUND #' + round + ' (' + elapsedMin + 'min)');
       try {
-        // Re-fetch quota using existing token (no login needed)
-        let vData;
+        let vBody;
         try {
-          vData = await weGetQuota(vToken, vSubscriber, vOfferId);
-        } catch(tokenErr) {
-          // Token expired — re-auth once and retry
-          console.log('  [VIGILANCE] Token error: ' + tokenErr.message + ' — refreshing...');
-          await vigilanceReauth();
-          vData = await weGetQuota(vToken, vSubscriber, vOfferId);
+          vBody = await getFreeUnitUsage(WE_USERNAME, vCustomerId);
+        } catch(e) {
+          // Re-auth
+          console.log('  [VIGILANCE] Re-authenticating...');
+          await getToken();
+          const ts = await getStatus(WE_USERNAME);
+          const auth = await login(WE_USERNAME, WE_PASSWORD, ts);
+          vCustomerId = auth.customerId;
+          vBody = await getFreeUnitUsage(WE_USERNAME, vCustomerId);
         }
-
-        console.log('  Remaining: ' + vData.remaining + ' GB | Used: ' + vData.used + ' GB');
-
-        // Firestore + Ledger + Flag
+        const vData = parseQuotaData(vBody);
+        console.log('  Remaining: ' + vData.remaining + ' GB');
         await firestoreWrite(vData, 'API Harvester ⚡ [VIGILANCE] Line 104');
         await firestoreLedger(vData, 'API Harvester ⚡ [VIGILANCE] Line 104', 'vigilance-mode');
         await firestoreFlag(vData.remaining);
-
-        // Burn rate calculation
-        const burned   = lastRem - vData.remaining;
+        const burned = lastRem - vData.remaining;
         const burnRate = burned > 0 ? (burned / (elapsedMin / 60)).toFixed(2) : '0.00';
         const hoursLeft = parseFloat(burnRate) > 0 ? (vData.remaining / parseFloat(burnRate)).toFixed(1) : '∞';
         const vRem = vData.remaining;
         const vIcon = vRem <= 2 ? '🚨' : vRem <= 10 ? '🔴' : vRem <= 20 ? '🟠' : '🟡';
-        const urgency = vRem <= 2  ? '🚨 *STOP — 2 GB! Recharge NOW!*' :
-                        vRem <= 5  ? '🔴 *CRITICAL — Under 5 GB!*' :
-                        vRem <= 10 ? '🔴 *CRITICAL — Under 10 GB!*' :
-                        vRem <= 20 ? '🟠 *WARNING — Under 20 GB*' :
-                        vRem <= 30 ? '🟡 *NOTICE — Under 30 GB*' : '';
-        const date = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const vMsg = [
-          '⚡ *Cairo Taj — Line 104 [VIGILANCE MODE]*',
-          '',
-          vIcon + ' Quota: *' + vRem.toFixed(2) + ' GB* remaining',
-          '📉 Used: *' + vData.used.toFixed(2) + ' GB*',
-          '💰 Balance: *' + (vData.balance || 0).toFixed(2) + ' EGP*',
-          '🔥 Burn rate: ~' + burnRate + ' GB/h',
-          '⏱ Est. time left: ~' + hoursLeft + 'h',
-          '🔄 Round: #' + round + ' (' + elapsedMin + 'min in)',
-          '🕐 ' + date,
-          urgency
-        ].filter(Boolean).join('\n');
-
-        await telegramSend(vMsg);
-        if (vRem <= 10) {
-          await telegramSend(['🚨🚨🚨 *VIGILANCE CRITICAL* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*', '📉 Only *' + vRem.toFixed(2) + ' GB* remaining!', '🔴 *Recharge immediately!*', '', '🕐 ' + date].join('\n'));
-        }
-
+        const urgency = vRem <= 2 ? '🚨 *STOP — 2 GB! Recharge NOW!*' : vRem <= 5 ? '🔴 *CRITICAL — Under 5 GB!*' : vRem <= 10 ? '🔴 *CRITICAL — Under 10 GB!*' : vRem <= 20 ? '🟠 *WARNING — Under 20 GB*' : vRem <= 30 ? '🟡 *NOTICE — Under 30 GB*' : '';
+        const vDate = new Date().toLocaleString('en-GB', { timeZone: 'Africa/Cairo', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        await telegramSend(['⚡ *Cairo Taj — Line 104 [VIGILANCE]*', '', vIcon + ' Quota: *' + vRem.toFixed(2) + ' GB*', '📉 Used: *' + vData.used.toFixed(2) + ' GB*', '💰 Balance: *' + vData.balance.toFixed(2) + ' EGP*', '🔥 Burn: ~' + burnRate + ' GB/h', '⏱ Est: ~' + hoursLeft + 'h', '🔄 Round #' + round + ' (' + elapsedMin + 'min)', '🕐 ' + vDate, urgency].filter(Boolean).join('\n'));
+        if (vRem <= 10) await telegramSend(['🚨🚨🚨 *VIGILANCE CRITICAL* 🚨🚨🚨', '⚠️ *Line 104: Only *' + vRem.toFixed(2) + ' GB*!', '🔴 *Recharge now!*', '🕐 ' + vDate].join('\n'));
         lastRem = vData.remaining;
-
-        if (vData.remaining <= STOP_GB) {
-          console.log('\n🚨 [VIGILANCE] ≤ 2 GB reached — stopping.');
-          break;
-        }
-
-      } catch(vErr) {
-        console.log('  [VIGILANCE] Round #' + round + ' error: ' + vErr.message + ' — continuing...');
-      }
+        if (vData.remaining <= STOP_GB) { console.log('\n🚨 [VIGILANCE] ≤ 2 GB — stopping.'); break; }
+      } catch(vErr) { console.log('  [VIGILANCE] Error: ' + vErr.message); }
     }
-
-    console.log('[VIGILANCE] Exiting after ' + round + ' rounds.');
+    console.log('[VIGILANCE] Done after ' + round + ' rounds.');
   }
 }
 
-// ── MAIN ENTRY POINT ──────────────────────────────────────────────
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log('\n' + '═'.repeat(50));
-      console.log('ATTEMPT ' + attempt + '/' + MAX_RETRIES);
-      console.log('═'.repeat(50) + '\n');
+      console.log('\n' + '═'.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '═'.repeat(50) + '\n');
       await harvestQuota();
       console.log('\n🎉 COMPLETE!');
       process.exit(0);
