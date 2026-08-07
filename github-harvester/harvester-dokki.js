@@ -2026,23 +2026,23 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(\n+'='.repeat(50)+\nATTEMPT +attempt+/+MAX_RETRIES+\n+'='.repeat(50)+\n);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
       await harvestQuota();
-      console.log('\n✅ COMPLETE!');
+      console.log('\nâœ… COMPLETE!');
       process.exit(0);
     } catch (error) {
-      console.error(\nAttempt +attempt+ failed: +error.message);
-      if (error.message && error.message.includes("WE_BLOCKED")) {
-        console.error('⛔ WE block detected - stopping retries');
-        console.error('🔁 Will retry on next scheduled run automatically');
+      console.error('\nAttempt ' + attempt + ' failed: ' + error.message);
+      if (error.message && error.message.includes('WE_BLOCKED')) {
+        console.error('â›” WE block detected - stopping retries');
+        console.error('ًں”پ Will retry on next scheduled run automatically');
         process.exit(1);
       }
-      if (error.message && error.message.startsWith("TOR_RETRY")) {
+      if (error.message && error.message.startsWith('TOR_RETRY')) {
         console.log('  [TOR] Immediate retry through Tor (not counting as failed)...');
         attempt--;
         continue;
       }
-      if (error.message && error.message.startsWith("TOR_CIRCUIT_ROTATED")) {
+      if (error.message && error.message.startsWith('TOR_CIRCUIT_ROTATED')) {
         console.log('  [TOR] Circuit rotated -- retrying in 5s...');
         attempt--;
         await sleep(5000);
@@ -2050,10 +2050,10 @@ async function main() {
       }
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
-        console.log(Retrying in \s...);
+        console.log('Retrying in ' + Math.floor(d / 1000) + 's...');
         await sleep(d);
       } else {
-        console.error('\n❌ ALL ATTEMPTS FAILED');
+        console.error('\nâ‌Œ ALL ATTEMPTS FAILED');
         process.exit(1);
       }
     }
