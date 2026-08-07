@@ -2026,12 +2026,12 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(\n\\nATTEMPT \/\\n\\n);
+      console.log(\n+'='.repeat(50)+\nATTEMPT +attempt+/+MAX_RETRIES+\n+'='.repeat(50)+\n);
       await harvestQuota();
       console.log('\n✅ COMPLETE!');
       process.exit(0);
     } catch (error) {
-      console.error(\nAttempt \ failed: \);
+      console.error(\nAttempt +attempt+ failed: +error.message);
       if (error.message && error.message.includes("WE_BLOCKED")) {
         console.error('⛔ WE block detected - stopping retries');
         console.error('🔁 Will retry on next scheduled run automatically');
