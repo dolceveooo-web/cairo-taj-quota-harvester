@@ -344,10 +344,10 @@ async function harvestQuota() {
     console.log('  [HUMAN] pause', delay2, 'ms');
     await sleep(delay2);
 
-    // Wait for dropdown/search input to appear after username triggers React re-render
-    console.log('  Waiting for service type input to appear...');
+    // Wait for dropdown to appear after username triggers React re-render
+    console.log('  Waiting for dropdown to appear...');
     await withTimeout(
-      page.waitForFunction(() => !!document.querySelector('#login_input_type_01, .ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
+      page.waitForFunction(() => !!document.querySelector('.ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
       16000, 'dropdown appearance'
     ).catch(() => console.log('  [WARN] Dropdown wait timed out, proceeding anyway'));
     await sleep(1000);
@@ -356,9 +356,8 @@ async function harvestQuota() {
     const dropdownDiag = await withTimeout(page.evaluate(() => ({
       antSelect: !!document.querySelector('.ant-select'),
       antSelectSelector: !!document.querySelector('.ant-select-selector'),
-      searchInput: !!document.querySelector('#login_input_type_01'),
       anySelect: !!document.querySelector('[class*="select"]'),
-      selectText: document.querySelector('.ant-select-selector')?.innerText || document.querySelector('#login_input_type_01')?.value || null
+      selectText: document.querySelector('.ant-select-selector')?.innerText || null
     })), 5000, 'dropdown diag').catch(() => null);
     console.log('  Dropdown state:', JSON.stringify(dropdownDiag));
 
@@ -366,7 +365,25 @@ async function harvestQuota() {
     console.log('STEP 3: DROPDOWN');
     // ======================================
     await tryMethods([
-      // M0: New search-input style (#login_input_type_01) â€” WE updated portal
+      // M0: search input - works on updated WE portal
+      async () => {
+        const si = await page.$('#login_input_type_01');
+        if (!si) throw new Error('search input not found');
+        await si.click(); await sleep(500);
+        await si.evaluate(el => { el.value=''; el.dispatchEvent(new Event('input',{bubbles:true})); });
+        await si.type('Internet', { delay: 80 }); await sleep(1000);
+        const clicked = await page.evaluate(() => {
+          const opts = Array.from(document.querySelectorAll('.ant-select-item-option, li, [class*="option"]'));
+          const inet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
+          if (inet) { inet.click(); return inet.textContent.trim(); } return null;
+        });
+        if (!clicked) { await page.keyboard.press('ArrowDown'); await sleep(300); await page.keyboard.press('Enter'); }
+        else { console.log('    M0: search input + clicked:', clicked); }
+        await sleep(800);
+        const val = await page.evaluate(() => (document.querySelector('.ant-select-selector')?.innerText||'') + (document.querySelector('#login_input_type_01')?.value||''));
+        if (!val.toLowerCase().includes('internet')) throw new Error('Internet not confirmed: ' + val);
+      },
+      // M0: search input (#login_input_type_01) - works on updated WE portal
       async () => {
         const searchInput = await page.$('#login_input_type_01');
         if (!searchInput) throw new Error('search input not found');
@@ -379,13 +396,12 @@ async function harvestQuota() {
           if (inet) { inet.click(); return inet.textContent.trim(); }
           return null;
         });
-        if (!clicked) { await page.keyboard.press('ArrowDown'); await sleep(300); await page.keyboard.press('Enter'); console.log('    M0: search input + ArrowDown + Enter'); }
+        if (!clicked) { await page.keyboard.press('ArrowDown'); await sleep(300); await page.keyboard.press('Enter'); }
         else { console.log('    M0: search input + clicked:', clicked); }
         await sleep(800);
         const val = await page.evaluate(() => (document.querySelector('.ant-select-selector')?.innerText||'') + (document.querySelector('#login_input_type_01')?.value||''));
         if (!val.toLowerCase().includes('internet')) throw new Error('Internet not confirmed: ' + val);
       },
-      // M1: Classic ant-select
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
@@ -560,7 +576,7 @@ async function harvestQuota() {
     // ======================================
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown';
-    for (let tick = 0; tick < 30; tick++) {
+    for (let tick = 0; tick < 20; tick++) {
       const currentUrl = page.url();
       if (!currentUrl.includes('login')) {
         postLoginState = 'navigated';
@@ -598,7 +614,7 @@ async function harvestQuota() {
     }
 
     if (postLoginState === 'unknown') {
-      throw new Error('Still on login page - no navigation or captcha after 30s');
+      throw new Error('Still on login page - no navigation or captcha after 20s');
     }
 
     // ======================================
@@ -624,31 +640,79 @@ async function harvestQuota() {
           return null;
         });
       }
-
-      // HELPER: Fetch captcha image via XHR (uses session cookies, bypasses naturalWidth=0)
+      // HELPER: Fetch captcha image â€” tries Node-side HTTP first (bypasses browser IP block),
+      // then falls back to in-browser XHR, then canvas naturalWidth
       async function fetchCaptchaBase64() {
         try {
+          // Step 1: get the image URL from the DOM
           const imgSrc = await page.evaluate(() => {
             const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
             if (!modal) return null;
-            const imgs = Array.from(modal.querySelectorAll('img')).sort((a,b)=>{
-              const aR=a.getBoundingClientRect(),bR=b.getBoundingClientRect();
-              return (bR.width*bR.height)-(aR.width*aR.height);
+            const imgs = Array.from(modal.querySelectorAll('img')).sort((a, b) => {
+              const aR = a.getBoundingClientRect(), bR = b.getBoundingClientRect();
+              return (bR.width * bR.height) - (aR.width * aR.height);
             });
-            for (const img of imgs) { const r=img.getBoundingClientRect(); if(r.width>80&&r.height>25) return img.src||img.getAttribute('src'); }
-            return imgs[0]?.src||null;
+            for (const img of imgs) {
+              const r = img.getBoundingClientRect();
+              if (r.width > 80 && r.height > 25) return img.src || img.getAttribute('src');
+            }
+            return imgs[0]?.src || null;
           });
-          if (!imgSrc) return null;
+          if (!imgSrc) { console.log('    [FETCH] No img src found in modal'); return null; }
           if (imgSrc.startsWith('data:image')) return imgSrc;
-          const b64 = await page.evaluate(async (url) => new Promise(resolve => {
+          console.log('    [FETCH] Image URL:', imgSrc.slice(0, 80));
+
+          // Step 2: Node-side fetch with page cookies (different network stack than browser)
+          try {
+            const pageCookies = await page.cookies();
+            const cookieStr = pageCookies.map(c => c.name + '=' + c.value).join('; ');
+            const nodeFetch = require('node-fetch');
+            const resp = await nodeFetch(imgSrc, {
+              headers: {
+                'Cookie': cookieStr,
+                'Referer': 'https://my.te.eg/',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+              },
+              timeout: 10000
+            });
+            if (resp.ok) {
+              const buf = await resp.buffer();
+              if (buf.length > 100) {
+                const b64 = 'data:image/png;base64,' + buf.toString('base64');
+                console.log('    [FETCH] Node-side OK, bytes:', buf.length);
+                return b64;
+              }
+            }
+            console.log('    [FETCH] Node-side resp:', resp.status);
+          } catch(nodeErr) {
+            console.log('    [FETCH] Node-side err:', nodeErr.message);
+          }
+
+          // Step 3: In-browser XHR fallback
+          const b64xhr = await page.evaluate(async (url) => new Promise(resolve => {
             const xhr = new XMLHttpRequest();
             xhr.open('GET', url, true); xhr.responseType = 'blob';
-            xhr.onload = () => { const r=new FileReader(); r.onloadend=()=>resolve(r.result); r.readAsDataURL(xhr.response); };
+            xhr.onload = () => { const r = new FileReader(); r.onloadend = () => resolve(r.result); r.readAsDataURL(xhr.response); };
             xhr.onerror = xhr.ontimeout = () => resolve(null);
             xhr.timeout = 8000; xhr.send();
           }), imgSrc);
-          return b64 || null;
-        } catch(e) { console.log('    [XHR] err:', e.message); return null; }
+          if (b64xhr) { console.log('    [FETCH] XHR fallback OK'); return b64xhr; }
+
+          // Step 4: fetch() API in browser context
+          const b64fetch = await page.evaluate(async (url) => {
+            try {
+              const r = await fetch(url, { credentials: 'include' });
+              if (!r.ok) return null;
+              const blob = await r.blob();
+              return await new Promise(res => { const fr = new FileReader(); fr.onloadend = () => res(fr.result); fr.readAsDataURL(blob); });
+            } catch(e) { return null; }
+          }, imgSrc);
+          if (b64fetch) { console.log('    [FETCH] browser fetch() OK'); return b64fetch; }
+
+          console.log('    [FETCH] All methods failed for:', imgSrc.slice(0, 60));
+          return null;
+        } catch(e) { console.log('    [FETCH] err:', e.message); return null; }
       }
 
 
@@ -672,20 +736,12 @@ async function harvestQuota() {
             const max = Math.max(r,g,b), min = Math.min(r,g,b);
             const sat = max === 0 ? 0 : (max - min) / max;
             let keep = false;
-            if (f === 'dark') {
-              keep = lum < 130;
-            } else if (f === 'dark2') {
-              keep = lum < 160;
-            } else if (f === 'nodots') {
-              keep = lum < 120 && sat < 0.6;
-            } else if (f === 'color') {
-              keep = sat > 0.25 && lum < 200;
-            } else if (f === 'red') {
-              keep = r > 80 && (r - g) > 20 && (r - b) > 10;
-            } else if (f === 'invert') {
-              const inv_lum = 255 - lum;
-              keep = inv_lum < 130;
-            }
+            if (f === 'dark')   { keep = lum < 130; }
+            else if (f === 'dark2')  { keep = lum < 160; }
+            else if (f === 'nodots') { keep = lum < 120 && sat < 0.6; }
+            else if (f === 'color')  { keep = sat > 0.25 && lum < 200; }
+            else if (f === 'red')    { keep = r > 80 && (r - g) > 20 && (r - b) > 10; }
+            else if (f === 'invert') { keep = (255 - lum) < 130; }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
             d[i+3] = 255;
           }
@@ -694,7 +750,7 @@ async function harvestQuota() {
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with multiple PSM modes â€” returns all candidate strings
+      // HELPER: OCR with 3 PSM modes â€” returns all candidate strings
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
@@ -743,17 +799,13 @@ async function harvestQuota() {
           await page.keyboard.type(answer, { delay: 60 });
           await sleep(500); await page.keyboard.press('Enter');
         }
-        // Wait up to 8s: navigated = success, modal gone = check for redirect
         for (let w = 0; w < 8; w++) {
           await sleep(1000);
           if (!page.url().includes('login')) return true;
           const modalStillOpen = await page.evaluate(() =>
             !!document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]')
           );
-          if (!modalStillOpen) {
-            await sleep(2000);
-            return !page.url().includes('login');
-          }
+          if (!modalStillOpen) { await sleep(2000); return !page.url().includes('login'); }
         }
         return !page.url().includes('login');
       }
@@ -793,23 +845,29 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (6 rounds â€” enough to solve, avoids IP block from too many attempts)
-      // 6 filters targeting WE captcha: mixed case+digits, dot bg, diagonal line
       const FILTERS = ['dark', 'dark2', 'nodots', 'color', 'red', 'invert'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 4 && !captchaSolved; round++) {
         console.log('  -- Round', round, '/ 4 --');
 
-        // Wait for captcha modal (from round 2 onward)
+        // Wait for captcha modal to be present (it appears automatically after wrong answer)
         if (round > 1) {
           let modalFound = false;
           for (let w = 0; w < 10; w++) {
             await sleep(1000);
-            if (await isModalOpen()) { modalFound = true; break; }
-            if (!page.url().includes('login')) { captchaSolved = true; console.log('  [OK] Navigated - login succeeded!'); break; }
+            const isOpen = await isModalOpen();
+            if (isOpen) { modalFound = true; break; }
+            // Check if login succeeded (navigated away)
+            if (!page.url().includes('login')) {
+              captchaSolved = true;
+              console.log('  [OK] Navigated away - login succeeded!');
+              break;
+            }
           }
           if (captchaSolved) break;
           if (!modalFound) {
+            // Modal didn't appear - try clicking Login to trigger it
             console.log('    Modal not found, re-clicking Login...');
             await page.evaluate(() => {
               const btns = Array.from(document.querySelectorAll('button'));
@@ -817,65 +875,62 @@ async function harvestQuota() {
               if (btn) btn.click();
             });
             await sleep(3000);
-            if (!await isModalOpen()) {
+            const nowOpen = await isModalOpen();
+            if (!nowOpen) {
               if (!page.url().includes('login')) { captchaSolved = true; break; }
-              console.log('    ! Still no modal, skipping round'); continue;
+              console.log('    ! Still no modal, skipping round');
+              continue;
             }
           }
-          await sleep(1000);
+          await sleep(1000); // Brief wait for new captcha image to load
         }
 
         try {
-          // Fetch image via XHR first (bypasses naturalWidth=0 on datacenter IPs)
+          // M1: Node-side fetch (different network stack, sometimes bypasses IP block)
           let imageData = null;
-          for (let retry = 0; retry < 5; retry++) {
+          for (let retry = 0; retry < 4; retry++) {
             imageData = await fetchCaptchaBase64();
-            if (imageData) { console.log('    [XHR] Image OK, length:', imageData.length); break; }
+            if (imageData) { console.log('    [FETCH] Image OK, length:', imageData.length); break; }
             await sleep(1500);
           }
-          // Canvas img handle as fallback
+          // M2: Canvas img handle (naturalWidth)
           let imgHandle = null;
           for (let retry = 0; retry < 6; retry++) {
             imgHandle = await findCaptchaImg();
             const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
             if (isValid) break;
-            imgHandle = null; await sleep(1000);
+            imgHandle = null;
+            await sleep(1000);
           }
           if (!imageData && !imgHandle) { console.log('    ! No captcha image from any method'); continue; }
 
-          // Collect all OCR candidates across all filters + score by frequency
+          // Collect OCR candidates across all filters
           const candidates = new Map();
           const addCandidate = (t, score) => {
-            if (t && t.length >= 4 && t.length <= 6) {
-              candidates.set(t, (candidates.get(t) || 0) + score);
-            }
+            if (t && t.length >= 4 && t.length <= 6) candidates.set(t, (candidates.get(t) || 0) + score);
           };
 
-          // Canvas filter pass
           if (imgHandle) {
             for (const filter of FILTERS) {
               const b64 = await canvasProcess(imgHandle, filter);
               if (!b64) continue;
               const texts = await ocrRead(b64);
               console.log('    [canvas-' + filter + '] OCR:', JSON.stringify(texts));
-              texts.forEach((t, idx) => addCandidate(t, idx === 0 ? 2 : 1));
+              texts.forEach((t, i) => addCandidate(t, i === 0 ? 2 : 1));
             }
           }
-          // Raw XHR image OCR pass
           if (imageData) {
             const texts = await ocrRead(imageData);
-            console.log('    [xhr-raw] OCR:', JSON.stringify(texts));
-            texts.forEach((t, idx) => addCandidate(t, idx === 0 ? 2 : 1));
+            console.log('    [node-ocr] OCR:', JSON.stringify(texts));
+            texts.forEach((t, i) => addCandidate(t, i === 0 ? 2 : 1));
           }
 
-          if (candidates.size === 0) { console.log('    ! No valid answer candidates â€” skipping'); continue; }
+          if (candidates.size === 0) { console.log('    ! No valid OCR candidates'); continue; }
 
-          // Pick highest-scored candidate
           const bestAnswer = [...candidates.entries()].sort((a, b) => b[1] - a[1])[0][0];
           console.log('    Candidates:', JSON.stringify([...candidates.entries()]), '-> best:', bestAnswer);
 
-          // WE captcha is MIXED case (upper + lower + digits)
-          // Try: as-read (preserves mixed case OCR), then all-upper, then all-lower
+          // WE captcha is mixed case â€” try as-read, UPPER, lower in same round
           const variants = [...new Set([bestAnswer, bestAnswer.toUpperCase(), bestAnswer.toLowerCase()])];
           console.log('    Trying variants:', variants);
 
@@ -887,13 +942,17 @@ async function harvestQuota() {
             }
             console.log('    X Wrong "' + attempt + '", trying next variant...');
             await sleep(1500);
-            if (!await isModalOpen()) break; // modal gone â€” blocked or solved
+            const modalStillOpen = await page.evaluate(() =>
+              !!document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]')
+            );
+            if (!modalStillOpen) break;
           }
           if (!captchaSolved) console.log('    All variants failed, next round...');
         } catch (e) {
           console.log('    ! Error:', e.message);
         }
       }
+
       if (!captchaSolved) {
         await page.evaluate(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
@@ -1221,11 +1280,6 @@ async function harvestQuota() {
 
     // Use pre-captured data from switcher if available (avoids race condition with redirect)
     // Only fall through to live extraction if switcher didn't capture data
-    // Guard: if we got bounced back to login during navigation, fail fast
-    async function checkNotBounced() {
-      if (page.url().includes('login')) throw new Error('SESSION_BOUNCED: redirected back to login during extract');
-    }
-
     const data = switcherCapturedData ? await (async () => {
       console.log('  [FAST PATH] Using data captured during line switch (race-condition safe)');
       console.log('    M1 numeric-only sibling scan');
@@ -1234,7 +1288,6 @@ async function harvestQuota() {
       // M1: Walk ALL spans/divs â€” numeric sibling scan
       async () => {
         await sleep(2000);
-        await checkNotBounced();
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
@@ -1262,7 +1315,6 @@ async function harvestQuota() {
       // M2: Full page text regex
       async () => {
         await sleep(5000);
-        await checkNotBounced();
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
           const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
@@ -1280,7 +1332,6 @@ async function harvestQuota() {
       // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
-        await checkNotBounced();
         const html = await withTimeout(page.content(), 8000, 'page.content');
         const r = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Remaining/i);
         const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
@@ -1482,6 +1533,299 @@ async function harvestQuota() {
     console.log('âœ… âœ… âœ…  SUCCESS  âœ… âœ… âœ…');
     console.log('â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ');
 
+    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // VIGILANCE MODE â€” triggered when quota â‰¤ 50 GB (Dokki)
+    // Stays in same session, refreshes every 13 minutes, harvests
+    // until quota â‰¤ 2 GB or session dies (then restarts + re-switches line).
+    // Only sends Telegram for Dokki â€” other line unaffected.
+    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    if (data.remaining <= 50) {
+      console.log('\nًں”´ VIGILANCE MODE ACTIVATED (DOKKI) â€” quota=' + data.remaining.toFixed(2) + ' GB â‰¤ 50 GB');
+      console.log('  Will harvest every 13 min until quota â‰¤ 2 GB or job time limit reached.\n');
+
+      const VIGILANCE_INTERVAL_MS = 13 * 60 * 1000;
+      const VIGILANCE_MAX_MS      = 5 * 60 * 60 * 1000 + 45 * 60 * 1000;
+      const VIGILANCE_STOP_GB     = 2;
+      const vigilanceStart        = Date.now();
+      let   vigilanceRound        = 0;
+      let   lastRemaining         = data.remaining;
+
+      // â”€â”€ Helper: refresh to account overview and re-switch to line 094 â”€â”€
+      async function vigilanceRefreshPage() {
+        await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 30000 });
+        await sleep(3000);
+        if (page.url().includes('#/login')) throw new Error('SESSION_DIED: redirected to login');
+        // Re-switch to line 094 (same logic as Step 5.5)
+        await page.waitForFunction(() => {
+          const t = document.body.innerText;
+          return t.includes('currently managing') || t.includes('Remaining');
+        }, { timeout: 15000 }).catch(() => {});
+        await sleep(1500);
+        const dropdowns = await page.$$('.ant-select-selector, .ant-select');
+        if (dropdowns.length) {
+          await dropdowns[0].click();
+          await sleep(1500);
+          await page.evaluate(() => {
+            const opts = Array.from(document.querySelectorAll('.ant-select-item-option-content, .ant-select-item, li, option'));
+            const t = opts.find(o => o.textContent && o.textContent.includes('0237600094'));
+            if (t) t.click();
+          });
+        }
+        // Wait for full 094 data (same 6-condition gate)
+        for (let w = 0; w < 30; w++) {
+          await sleep(1000);
+          if (page.url().includes('#/login') && w > 5) throw new Error('SESSION_DIED: redirected to login after line switch');
+          const check = await checkPage094();
+          if (check.hasRemaining && check.has094) {
+            const captured = await extractNow();
+            if (captured) {
+              const totalGB = (captured.remaining || 0) + (captured.used || 0);
+              if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
+                console.log('  âœ“ [VIGILANCE] Line 094 confirmed: rem=' + captured.remaining + ' bal=' + captured.balance);
+                return captured;
+              }
+            }
+          }
+        }
+        throw new Error('Line 094 data not confirmed after 30s');
+      }
+
+      // â”€â”€ Helper: write to Firestore (Dokki only) â”€â”€
+      async function vigilanceFirestore(vData) {
+        const vNow = new Date().toISOString();
+        const vFields = {
+          'dokki': { mapValue: { fields: {
+            quota:     { doubleValue: vData.remaining },
+            maxQuota:  { doubleValue: vData.remaining + vData.used },
+            balance:   { doubleValue: vData.balance },
+            used:      { doubleValue: vData.used },
+            plan:      { stringValue: vData.plan },
+            updatedAt: { stringValue: vNow },
+            updatedBy: { stringValue: 'GitHub Cloud âڑ، Dokki [VIGILANCE]' },
+            status:    { stringValue: 'success' }
+          }}},
+          lastUpdate: { stringValue: vNow }
+        };
+        const mask = 'updateMask.fieldPaths=dokki&updateMask.fieldPaths=lastUpdate';
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}&${mask}`;
+        const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: vFields }) });
+        if (!res.ok) throw new Error('Firestore HTTP ' + res.status);
+        const vHistory = {
+          timestamp: { stringValue: vNow },
+          user: { stringValue: 'GitHub Cloud âڑ، Dokki [VIGILANCE]' },
+          notes: { stringValue: 'vigilance-mode' },
+          dokki: { mapValue: { fields: { quota: { doubleValue: vData.remaining }, balance: { doubleValue: vData.balance } } } },
+          '104': { mapValue: { fields: { quota: { nullValue: null }, balance: { nullValue: null } } } },
+          gezira: { mapValue: { fields: { quota: { nullValue: null }, balance: { nullValue: null } } } }
+        };
+        const hUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_history?key=${FIREBASE_API_KEY}`;
+        await fetch(hUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: vHistory }) });
+      }
+
+      // â”€â”€ Helper: send Vigilance Telegram (Dokki only) â”€â”€
+      async function vigilanceTelegram(vData, vRound, elapsed) {
+        try {
+          const rem = vData.remaining;
+          const elapsedMin = Math.floor(elapsed / 60000);
+          const burned = lastRemaining - rem;
+          const burnRate = burned > 0 ? (burned / (elapsedMin / 60)).toFixed(2) : '0.00';
+          const hoursLeft = parseFloat(burnRate) > 0 ? (rem / parseFloat(burnRate)).toFixed(1) : 'âˆ‍';
+          const date = new Date().toLocaleString('en-GB', {
+            timeZone: 'Africa/Cairo', day: '2-digit', month: 'short',
+            year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+          const icon = rem <= 2 ? 'ًںڑ¨' : rem <= 10 ? 'ًں”´' : rem <= 20 ? 'ًںں ' : 'ًںں،';
+          const urgency = rem <= 2  ? 'ًںڑ¨ *STOP â€” 2 GB REACHED! Recharge NOW!*' :
+                          rem <= 5  ? 'ًں”´ *CRITICAL â€” Under 5 GB!*' :
+                          rem <= 10 ? 'ًں”´ *CRITICAL â€” Under 10 GB! Recharge soon!*' :
+                          rem <= 20 ? 'ًںں  *WARNING â€” Under 20 GB*' :
+                          rem <= 30 ? 'ًںں، *NOTICE â€” Under 30 GB*' : '';
+          const msg = [
+            'âڑ، *Cairo Taj â€” Dokki [VIGILANCE MODE]*',
+            '',
+            icon + ' Quota: *' + rem.toFixed(2) + ' GB* remaining',
+            'ًں“‰ Used: *' + vData.used.toFixed(2) + ' GB*',
+            'ًں’° Balance: *' + vData.balance.toFixed(2) + ' EGP*',
+            'ًں”¥ Burn rate: ~' + burnRate + ' GB/h',
+            'âڈ± Est. time left: ~' + hoursLeft + 'h',
+            'ًں”„ Vigilance round: #' + vRound + ' (' + elapsedMin + 'min in)',
+            'ًں•گ ' + date,
+            urgency
+          ].filter(Boolean).join('\n');
+          const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+          const recipients = [TELEGRAM_CHAT_ID];
+          if (TELEGRAM_GROUP_ID) recipients.push(TELEGRAM_GROUP_ID);
+          for (const chatId of recipients) {
+            if (!chatId) continue;
+            await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' }) });
+          }
+          if (rem <= 10) {
+            const critMsg = {
+              text: ['ًںڑ¨ًںڑ¨ًںڑ¨ *VIGILANCE CRITICAL* ًںڑ¨ًںڑ¨ًںڑ¨', '', 'âڑ ï¸ڈ *Cairo Taj â€” Dokki*',
+                'ًں“‰ Only *' + rem.toFixed(2) + ' GB* remaining!',
+                'ًں”´ *ACTION REQUIRED: Recharge immediately!*', '', 'ًں•گ ' + date].join('\n'),
+              parse_mode: 'Markdown', disable_notification: false
+            };
+            for (const chatId of recipients) {
+              if (!chatId) continue;
+              await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...critMsg, chat_id: chatId }) });
+            }
+          }
+          console.log('  âœ“ Vigilance Telegram sent (round #' + vRound + ')');
+        } catch(e) { console.log('  âڑ  Vigilance Telegram failed (non-critical):', e.message); }
+      }
+
+      // â”€â”€ Helper: full re-login + re-switch to 094 when session dies â”€â”€
+      async function vigilanceRestartSession() {
+        console.log('  [VIGILANCE] Session died â€” restarting fresh session...');
+        try { await browser.close(); } catch(e) {}
+        browser = await puppeteer.launch({
+          headless: true, executablePath: '/usr/bin/google-chrome-stable',
+          protocolTimeout: 60000,
+          args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+                 '--disable-blink-features=AutomationControlled',
+                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768'],
+          ignoreDefaultArgs: ['--enable-automation']
+        });
+        page = await browser.newPage();
+        await page.evaluateOnNewDocument(() => {
+          window.alert = () => {}; window.confirm = () => true; window.prompt = () => '';
+          Object.defineProperty(window, 'console', { writable: false, configurable: false });
+          Object.defineProperty(navigator, 'webdriver', { get: () => false });
+          window.navigator.chrome = { runtime: {} };
+          Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+          Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
+        });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setViewport({ width: 1366, height: 768 });
+        page.on('dialog', async dialog => { await dialog.accept(); });
+        // Try saved cookies first
+        const sc = await loadSavedCookies();
+        if (sc && sc.length > 0) {
+          await page.setCookie(...sc);
+          await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 20000 });
+          await sleep(3000);
+          if (!page.url().includes('login')) {
+            console.log('  [VIGILANCE] Session restored from cookies âœ“');
+            return;
+          }
+          await clearCookies();
+        }
+        // Full fresh login
+        await tryMethods([
+          async () => {
+            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
+          },
+          async () => {
+            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+            await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
+          }
+        ], 'VIGILANCE RE-NAVIGATE', 55000);
+        await sleep(randomDelay(3000, 5000));
+        await page.focus('#login_loginid_input_01').catch(() => {});
+        await sleep(2000);
+        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: randomDelay(100, 180) });
+        await sleep(randomDelay(4000, 6000));
+        await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 12000 }).catch(() => {});
+        await sleep(500);
+        const dd = await page.$('.ant-select-selector, .ant-select');
+        if (dd) { await dd.click(); await sleep(1500); }
+        await page.evaluate(() => {
+          for (const el of document.querySelectorAll('.ant-select-item-option, li')) {
+            if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
+          }
+        });
+        await sleep(randomDelay(4000, 6000));
+        await page.focus('#login_password_input_01').catch(() => {});
+        await sleep(2000);
+        await page.type('#login_password_input_01', WE_PASSWORD, { delay: randomDelay(100, 180) });
+        await sleep(randomDelay(4000, 6000));
+        await page.evaluate(() => {
+          const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+          if (btn) btn.click();
+        });
+        for (let t = 0; t < 20; t++) {
+          await sleep(1000);
+          if (!page.url().includes('login')) break;
+        }
+        if (page.url().includes('login')) throw new Error('Re-login failed after session death');
+        console.log('  [VIGILANCE] Fresh login successful âœ“');
+        try {
+          const nc = await page.cookies();
+          const rel = nc.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
+          if (rel.length > 0) await saveCookies(rel);
+        } catch(e) {}
+      }
+
+      // â•گâ•گ MAIN VIGILANCE LOOP (Dokki) â•گâ•گ
+      while (true) {
+        const elapsed = Date.now() - vigilanceStart;
+        if (elapsed >= VIGILANCE_MAX_MS) {
+          console.log('\n[VIGILANCE] 5h 45m safety cap reached â€” stopping vigilance mode.');
+          break;
+        }
+        console.log('\n[VIGILANCE] Waiting 13 minutes for next harvest...');
+        await sleep(VIGILANCE_INTERVAL_MS);
+
+        vigilanceRound++;
+        const elapsedMin = Math.floor((Date.now() - vigilanceStart) / 60000);
+        console.log('\n' + 'â•گ'.repeat(50));
+        console.log('âڑ، VIGILANCE ROUND #' + vigilanceRound + ' â€” DOKKI (' + elapsedMin + 'min elapsed)');
+        console.log('â•گ'.repeat(50));
+
+        try {
+          // Refresh page + re-switch to 094 (returns confirmed vData directly)
+          const vData = await vigilanceRefreshPage();
+          console.log('  Remaining: ' + vData.remaining + ' GB | Used: ' + vData.used + ' GB | Balance: ' + vData.balance + ' EGP');
+
+          await vigilanceFirestore(vData);
+          console.log('  âœ“ Firestore + Ledger updated');
+
+          try {
+            const vNow = new Date().toISOString();
+            const isLowDokki = vData.remaining < 100;
+            const alertFields = {
+              dokki_low: { booleanValue: isLowDokki },
+              dokki_quota: { doubleValue: vData.remaining },
+              dokki_updatedAt: { stringValue: vNow }
+            };
+            const alertMask = 'updateMask.fieldPaths=dokki_low&updateMask.fieldPaths=dokki_quota&updateMask.fieldPaths=dokki_updatedAt';
+            const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
+            await fetch(alertUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: alertFields }) });
+          } catch(e) { console.log('  âڑ  Flag update failed (non-critical):', e.message); }
+
+          await vigilanceTelegram(vData, vigilanceRound, Date.now() - vigilanceStart);
+          lastRemaining = vData.remaining;
+
+          if (vData.remaining <= VIGILANCE_STOP_GB) {
+            console.log('\nًںڑ¨ [VIGILANCE] Quota reached ' + vData.remaining.toFixed(2) + ' GB â€” STOP THRESHOLD HIT.');
+            console.log('  Vigilance mode complete. Awaiting manual recharge.');
+            break;
+          }
+
+        } catch (vErr) {
+          console.log('  [VIGILANCE] Round #' + vigilanceRound + ' error: ' + vErr.message);
+          if (vErr.message.includes('SESSION_DIED') || vErr.message.includes('redirected to login') || vErr.message.includes('ALL METHODS FAILED')) {
+            console.log('  [VIGILANCE] Session dead â€” attempting restart...');
+            try {
+              await vigilanceRestartSession();
+              console.log('  [VIGILANCE] Session restarted. Will retry on next round.');
+            } catch (restartErr) {
+              console.log('  [VIGILANCE] Restart failed: ' + restartErr.message + ' â€” stopping vigilance.');
+              break;
+            }
+          } else {
+            console.log('  [VIGILANCE] Non-fatal error, continuing...');
+          }
+        }
+      }
+
+      console.log('\n[VIGILANCE] Exiting vigilance mode after ' + vigilanceRound + ' rounds (Dokki).');
+    } // end vigilance mode
+
   } catch (error) {
     console.error('\nâ‌Œ ERROR:', error.message);
     if (page) {
@@ -1529,6 +1873,3 @@ async function main() {
 }
 
 main();
-
-
-
