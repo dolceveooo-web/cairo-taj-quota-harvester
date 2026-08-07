@@ -651,7 +651,9 @@ async function harvestQuota() {
         } catch(e) { console.log('    [XHR] err:', e.message); return null; }
       }
 
-      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
+
+      // HELPER: Canvas preprocessing â€” 6 filters targeting WE captcha
+      // WE captcha: mixed upper+lower+digits, dot noise background, diagonal line crossing
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
@@ -666,44 +668,48 @@ async function harvestQuota() {
           const d = data.data;
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
+            const lum = 0.299*r + 0.587*g + 0.114*b;
+            const max = Math.max(r,g,b), min = Math.min(r,g,b);
+            const sat = max === 0 ? 0 : (max - min) / max;
             let keep = false;
-            if (f === 'red') {
-              // Red isolation: keep reddish pixels, kill blue line + gray bg
-              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
-            } else if (f === 'dark') {
-              // Dark text: keep anything with low luminance
-              const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = lum < 140;
-            } else {
-              // Saturated: keep colored pixels, remove gray/white
-              const max = Math.max(r,g,b), min = Math.min(r,g,b);
-              const sat = max === 0 ? 0 : (max - min) / max;
-              keep = sat > 0.3 && r > g;
+            if (f === 'dark') {
+              keep = lum < 130;
+            } else if (f === 'dark2') {
+              keep = lum < 160;
+            } else if (f === 'nodots') {
+              keep = lum < 120 && sat < 0.6;
+            } else if (f === 'color') {
+              keep = sat > 0.25 && lum < 200;
+            } else if (f === 'red') {
+              keep = r > 80 && (r - g) > 20 && (r - b) > 10;
+            } else if (f === 'invert') {
+              const inv_lum = 255 - lum;
+              keep = inv_lum < 130;
             }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
+            d[i+3] = 255;
           }
           ctx.putImageData(data, 0, 0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with dual PSM modes
+      // HELPER: OCR with multiple PSM modes â€” returns all candidate strings
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
-        const r1 = await Tesseract.recognize(imageData, 'eng', {
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-          tessedit_pageseg_mode: '8'
-        });
-        const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-        if (t1) results.push(t1);
-        if (t1.length < 4 || t1.length > 6) {
-          const r2 = await Tesseract.recognize(imageData, 'eng', {
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-            tessedit_pageseg_mode: '7'
-          });
-          const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-          if (t2 && t2 !== t1) results.push(t2);
+        const seen = new Set();
+        const whitelist = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        for (const psm of ['8', '7', '6']) {
+          try {
+            const r = await Tesseract.recognize(imageData, 'eng', {
+              tessedit_char_whitelist: whitelist,
+              tessedit_pageseg_mode: psm,
+              preserve_interword_spaces: '0'
+            });
+            const t = r.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+            if (t && !seen.has(t)) { seen.add(t); results.push(t); }
+          } catch(e) { /* ignore */ }
         }
         return results;
       }
@@ -714,35 +720,41 @@ async function harvestQuota() {
         const ok = await page.evaluate((ans) => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return false;
-          const inp = modal.querySelector('input.ant-input, input[type="text"]');
+          const inp = modal.querySelector('input.ant-input, input[type="text"], input');
           if (!inp) return false;
-          inp.focus();
-          inp.click();
+          inp.focus(); inp.click();
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-          setter.call(inp, '');
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
-          setter.call(inp, ans);
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          setter.call(inp, ''); inp.dispatchEvent(new Event('input', { bubbles: true }));
+          setter.call(inp, ans); inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-          // Find the OK/confirm button â€” NOT Cancel. Look for button with ok/confirm text,
-          // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
+          inp.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+          inp.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
           const allBtns = Array.from(modal.querySelectorAll('button'));
-          const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
+          const btn = allBtns.find(b => /ok|confirm|submit|verify/i.test(b.textContent)) ||
                       modal.querySelector('button.ant-btn-primary') ||
-                      allBtns[allBtns.length - 1]; // last button = OK
-          console.log('[captcha] Clicking button:', btn ? btn.textContent.trim() : 'none', 'of', allBtns.length, 'buttons');
+                      allBtns[allBtns.length - 1];
+          console.log('[captcha] Clicking:', btn ? btn.textContent.trim() : 'none', '/', allBtns.length, 'btns');
           if (btn) btn.click();
           return true;
         }, answer);
         if (!ok) {
           console.log('    -> Keyboard fallback');
-          await page.keyboard.press('Tab');
-          await sleep(200);
-          await page.keyboard.type(answer, { delay: 40 });
-          await sleep(300);
-          await page.keyboard.press('Enter');
+          await page.keyboard.press('Tab'); await sleep(300);
+          await page.keyboard.type(answer, { delay: 60 });
+          await sleep(500); await page.keyboard.press('Enter');
         }
-        await sleep(5000);
+        // Wait up to 8s: navigated = success, modal gone = check for redirect
+        for (let w = 0; w < 8; w++) {
+          await sleep(1000);
+          if (!page.url().includes('login')) return true;
+          const modalStillOpen = await page.evaluate(() =>
+            !!document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]')
+          );
+          if (!modalStillOpen) {
+            await sleep(2000);
+            return !page.url().includes('login');
+          }
+        }
         return !page.url().includes('login');
       }
 
@@ -781,29 +793,23 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (6 rounds â€” enough to solve, avoids IP block from too many attempts)
-      const FILTERS = ['red', 'dark', 'contrast'];
+      // 6 filters targeting WE captcha: mixed case+digits, dot bg, diagonal line
+      const FILTERS = ['dark', 'dark2', 'nodots', 'color', 'red', 'invert'];
       let captchaSolved = false;
 
-      for (let round = 1; round <= 3 && !captchaSolved; round++) {
-        console.log('  -- Round', round, '/ 3 --');
+      for (let round = 1; round <= 4 && !captchaSolved; round++) {
+        console.log('  -- Round', round, '/ 4 --');
 
-        // Wait for captcha modal to be present (it appears automatically after wrong answer)
+        // Wait for captcha modal (from round 2 onward)
         if (round > 1) {
           let modalFound = false;
           for (let w = 0; w < 10; w++) {
             await sleep(1000);
-            const isOpen = await isModalOpen();
-            if (isOpen) { modalFound = true; break; }
-            // Check if login succeeded (navigated away)
-            if (!page.url().includes('login')) {
-              captchaSolved = true;
-              console.log('  [OK] Navigated away - login succeeded!');
-              break;
-            }
+            if (await isModalOpen()) { modalFound = true; break; }
+            if (!page.url().includes('login')) { captchaSolved = true; console.log('  [OK] Navigated - login succeeded!'); break; }
           }
           if (captchaSolved) break;
           if (!modalFound) {
-            // Modal didn't appear - try clicking Login to trigger it
             console.log('    Modal not found, re-clicking Login...');
             await page.evaluate(() => {
               const btns = Array.from(document.querySelectorAll('button'));
@@ -811,71 +817,83 @@ async function harvestQuota() {
               if (btn) btn.click();
             });
             await sleep(3000);
-            const nowOpen = await isModalOpen();
-            if (!nowOpen) {
+            if (!await isModalOpen()) {
               if (!page.url().includes('login')) { captchaSolved = true; break; }
-              console.log('    ! Still no modal, skipping round');
-              continue;
+              console.log('    ! Still no modal, skipping round'); continue;
             }
           }
-          await sleep(1000); // Brief wait for new captcha image to load
+          await sleep(1000);
         }
 
         try {
-          // M1: XHR fetch (bypasses naturalWidth=0 on datacenter IPs)
+          // Fetch image via XHR first (bypasses naturalWidth=0 on datacenter IPs)
           let imageData = null;
-          for (let retry = 0; retry < 4; retry++) {
+          for (let retry = 0; retry < 5; retry++) {
             imageData = await fetchCaptchaBase64();
             if (imageData) { console.log('    [XHR] Image OK, length:', imageData.length); break; }
             await sleep(1500);
           }
-          // M2: Canvas img handle (naturalWidth)
+          // Canvas img handle as fallback
           let imgHandle = null;
           for (let retry = 0; retry < 6; retry++) {
             imgHandle = await findCaptchaImg();
             const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
             if (isValid) break;
-            imgHandle = null;
-            await sleep(1000);
+            imgHandle = null; await sleep(1000);
           }
           if (!imageData && !imgHandle) { console.log('    ! No captcha image from any method'); continue; }
 
-          let bestAnswer = '';
-          // Canvas filters first
-          if (imgHandle && !bestAnswer) {
+          // Collect all OCR candidates across all filters + score by frequency
+          const candidates = new Map();
+          const addCandidate = (t, score) => {
+            if (t && t.length >= 4 && t.length <= 6) {
+              candidates.set(t, (candidates.get(t) || 0) + score);
+            }
+          };
+
+          // Canvas filter pass
+          if (imgHandle) {
             for (const filter of FILTERS) {
               const b64 = await canvasProcess(imgHandle, filter);
               if (!b64) continue;
               const texts = await ocrRead(b64);
-              const match = texts.find(t => t.length >= 4 && t.length <= 6);
-              console.log('    [canvas-' + filter + '] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
-              if (match) { bestAnswer = match; break; }
+              console.log('    [canvas-' + filter + '] OCR:', JSON.stringify(texts));
+              texts.forEach((t, idx) => addCandidate(t, idx === 0 ? 2 : 1));
             }
           }
-          // XHR image OCR fallback
-          if (imageData && !bestAnswer) {
+          // Raw XHR image OCR pass
+          if (imageData) {
             const texts = await ocrRead(imageData);
-            const match = texts.find(t => t.length >= 4 && t.length <= 6) || texts[0] || '';
-            console.log('    [xhr-ocr] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
-            if (match) bestAnswer = match;
+            console.log('    [xhr-raw] OCR:', JSON.stringify(texts));
+            texts.forEach((t, idx) => addCandidate(t, idx === 0 ? 2 : 1));
           }
-          if (!bestAnswer) { console.log('    ! No answer - skipping (block protection)'); continue; }
 
-          // Captcha is mixed case - try orig/UPPER/lower across rounds
-          const variantIndex = (round - 1) % 3;
-          const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
-          console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
-          captchaSolved = await submitAnswer(attempt);
-          if (captchaSolved) {
-            console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
-          } else {
-            console.log('    X Wrong "' + attempt + '", next round...');
+          if (candidates.size === 0) { console.log('    ! No valid answer candidates â€” skipping'); continue; }
+
+          // Pick highest-scored candidate
+          const bestAnswer = [...candidates.entries()].sort((a, b) => b[1] - a[1])[0][0];
+          console.log('    Candidates:', JSON.stringify([...candidates.entries()]), '-> best:', bestAnswer);
+
+          // WE captcha is MIXED case (upper + lower + digits)
+          // Try: as-read (preserves mixed case OCR), then all-upper, then all-lower
+          const variants = [...new Set([bestAnswer, bestAnswer.toUpperCase(), bestAnswer.toLowerCase()])];
+          console.log('    Trying variants:', variants);
+
+          for (const attempt of variants) {
+            captchaSolved = await submitAnswer(attempt);
+            if (captchaSolved) {
+              console.log('  >>> CAPTCHA SOLVED with "' + attempt + '"! <<<');
+              break;
+            }
+            console.log('    X Wrong "' + attempt + '", trying next variant...');
+            await sleep(1500);
+            if (!await isModalOpen()) break; // modal gone â€” blocked or solved
           }
+          if (!captchaSolved) console.log('    All variants failed, next round...');
         } catch (e) {
           console.log('    ! Error:', e.message);
         }
       }
-
       if (!captchaSolved) {
         await page.evaluate(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
@@ -1203,6 +1221,11 @@ async function harvestQuota() {
 
     // Use pre-captured data from switcher if available (avoids race condition with redirect)
     // Only fall through to live extraction if switcher didn't capture data
+    // Guard: if we got bounced back to login during navigation, fail fast
+    async function checkNotBounced() {
+      if (page.url().includes('login')) throw new Error('SESSION_BOUNCED: redirected back to login during extract');
+    }
+
     const data = switcherCapturedData ? await (async () => {
       console.log('  [FAST PATH] Using data captured during line switch (race-condition safe)');
       console.log('    M1 numeric-only sibling scan');
@@ -1211,6 +1234,7 @@ async function harvestQuota() {
       // M1: Walk ALL spans/divs â€” numeric sibling scan
       async () => {
         await sleep(2000);
+        await checkNotBounced();
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
@@ -1238,6 +1262,7 @@ async function harvestQuota() {
       // M2: Full page text regex
       async () => {
         await sleep(5000);
+        await checkNotBounced();
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
           const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
@@ -1255,6 +1280,7 @@ async function harvestQuota() {
       // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
+        await checkNotBounced();
         const html = await withTimeout(page.content(), 8000, 'page.content');
         const r = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Remaining/i);
         const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
