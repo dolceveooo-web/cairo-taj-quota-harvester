@@ -1,9 +1,9 @@
-const puppeteer = require('puppeteer-extra');
+﻿const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fetch = require('node-fetch');
 
 // ============================================================
-// TOR INTEGRATION — automatic IP rotation when WE blocks us
+// TOR INTEGRATION â€” automatic IP rotation when WE blocks us
 // ============================================================
 const { execSync, exec } = require('child_process');
 const net = require('net');
@@ -12,18 +12,21 @@ const net = require('net');
 let torActive = false;
 let torCircuitCount = 0;
 
-// Start Tor if not already running (rely on system service installed by GitHub Actions)
+// Start Tor if not already running
 async function ensureTor() {
   try {
     execSync('pgrep -x tor', { stdio: 'ignore' });
     console.log('  [TOR] Already running');
   } catch(e) {
-    console.log('  [TOR] Starting system Tor service...');
+    console.log('  [TOR] Starting Tor...');
     try {
       execSync('sudo service tor start', { stdio: 'inherit', timeout: 15000 });
-      await sleep(5000); // Wait for Tor to establish circuits
+      await sleep(4000); // Wait for Tor to establish circuits
+      console.log('  [TOR] Started');
     } catch(e2) {
-      console.log('  [TOR] Warning: service start command returned non-zero, checking port...');
+      console.log('  [TOR] service start failed, trying direct:', e2.message);
+      execSync('tor --RunAsDaemon 1 --SocksPort 9050 --ControlPort 9051', { timeout: 5000 });
+      await sleep(5000);
     }
   }
   // Verify SOCKS port is open
@@ -44,24 +47,21 @@ async function rotateTorCircuit() {
     await new Promise((resolve, reject) => {
       const s = net.createConnection({ port: 9051, host: '127.0.0.1' }, () => {
         s.write('AUTHENTICATE ""\r\nSIGNAL NEWNYM\r\nQUIT\r\n');
-      });
-      s.on('data', (data) => {
-        if (data.toString().includes('250')) {
-          resolve();
-        }
+        s.on('data', () => {});
+        s.on('end', resolve);
+        setTimeout(() => { s.destroy(); resolve(); }, 3000);
       });
       s.on('error', reject);
-      setTimeout(() => { s.destroy(); resolve(); }, 4000);
     });
-    await sleep(5000); // Wait for new circuit to establish
+    await sleep(3000); // Wait for new circuit to establish
     console.log('  [TOR] New circuit ready');
   } catch(e) {
     console.log('  [TOR] Circuit rotation failed (non-fatal):', e.message);
-    await sleep(3000);
+    await sleep(2000);
   }
 }
 
-// Launch browser — with or without Tor proxy
+// Launch browser â€” with or without Tor proxy
 async function launchBrowser(useTor) {
   const args = [
     '--no-sandbox',
@@ -171,6 +171,8 @@ async function harvestQuota() {
   let browser, page;
 
   // --- Session Cookie Helpers ---
+  // Save/load cookies via Firestore so we can skip login when session is still valid
+  // Cookies stored in quota_settings/session_104 as a JSON string
   async function loadSavedCookies() {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
@@ -180,6 +182,7 @@ async function harvestQuota() {
       const cookieStr = doc?.fields?.cookies?.stringValue;
       const savedAt = doc?.fields?.savedAt?.stringValue;
       if (!cookieStr || !savedAt) return null;
+      // Only use cookies saved within last 4 hours
       const age = Date.now() - new Date(savedAt).getTime();
       if (age > 4 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>4h old), will do fresh login'); return null; }
       console.log('  [SESSION] Found saved cookies (' + Math.floor(age/60000) + 'm old)');
@@ -212,11 +215,13 @@ async function harvestQuota() {
       console.log('  [SESSION] Cookies cleared from Firestore');
     } catch(e) {}
   }
+  // €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 
   try {
     let useTor = false;
     browser = await launchBrowser(false);
 
+    // Helper to setup a fresh page with stealth settings
     async function setupPage() {
       const p = await browser.newPage();
       await p.evaluateOnNewDocument(() => {
@@ -235,6 +240,10 @@ async function harvestQuota() {
 
     page = await setupPage();
 
+
+    // ======================================
+    // STEP 0: TRY SAVED SESSION COOKIES
+    // ======================================
     console.log('STEP 0: SESSION CHECK');
     let sessionValid = false;
     const savedCookies = await loadSavedCookies();
@@ -261,24 +270,30 @@ async function harvestQuota() {
       console.log('  No saved session, will do fresh login\n');
     }
 
+    // ======================================
     console.log('STEP 1: NAVIGATE');
+    // ======================================
     if (!sessionValid) {
     await tryMethods([
+      // M1: EXACT same as working local harvester
       async () => {
         await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
         await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
         console.log('    networkidle2 + wait for 2 inputs (local harvester method)');
       },
+      // M2: domcontentloaded + wait for 2 inputs
       async () => {
         await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
         await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
         console.log('    domcontentloaded + wait for 2 inputs');
       },
+      // M3: load + wait for 2 inputs
       async () => {
         await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 40000 });
         await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
         console.log('    load + wait for 2 inputs');
       },
+      // M4: no wait + long sleep + check inputs
       async () => {
         await page.goto('https://my.te.eg/echannel/', { timeout: 40000 });
         await sleep(15000);
@@ -286,6 +301,7 @@ async function harvestQuota() {
         if (count < 1) throw new Error(`Only ${count} inputs found`);
         console.log(`    no wait + 15s sleep, found ${count} inputs`);
       },
+      // M5: domcontentloaded + very long sleep
       async () => {
         await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
         await sleep(20000);
@@ -295,6 +311,7 @@ async function harvestQuota() {
 
     console.log('  URL:', page.url());
 
+    // Dump diagnostics BEFORE username step
     console.log('\n  --- FORM DIAGNOSTICS ---');
     const diag = await withTimeout(page.evaluate(() => {
       const inputs = Array.from(document.querySelectorAll('input'));
@@ -317,12 +334,16 @@ async function harvestQuota() {
     diag.inputs.forEach(inp => console.log(`    [${inp.i}] id="${inp.id}" type="${inp.type}" placeholder="${inp.placeholder}" visible=${inp.visible}`));
     console.log('  --- END DIAGNOSTICS ---\n');
 
+    // Human-like pause before typing
     const delay1 = randomDelay(5000, 8000);
     console.log('  [HUMAN] pause', delay1, 'ms');
     await sleep(delay1);
 
+    // ======================================
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
+    // ======================================
     await tryMethods([
+      // M1: EXACT same as working local harvester
       async () => {
         await page.focus('#login_loginid_input_01');
         await sleep(3000);
@@ -330,6 +351,7 @@ async function harvestQuota() {
         await sleep(3000);
         console.log('    focus + type (local harvester method)');
       },
+      // M2: $ find + click + type
       async () => {
         const el = await page.$('#login_loginid_input_01');
         if (!el) throw new Error('ID not found');
@@ -338,6 +360,7 @@ async function harvestQuota() {
         await sleep(3000);
         console.log('    $ find + click + type');
       },
+      // M3: .ant-input class
       async () => {
         const els = await page.$$('.ant-input');
         if (!els.length) throw new Error('no .ant-input');
@@ -346,6 +369,7 @@ async function harvestQuota() {
         await sleep(3000);
         console.log('    .ant-input class');
       },
+      // M4: input[type=text]
       async () => {
         const els = await page.$$('input[type="text"]');
         if (!els.length) throw new Error('no text inputs');
@@ -354,6 +378,7 @@ async function harvestQuota() {
         await sleep(3000);
         console.log('    input[type=text]');
       },
+      // M5: DOM evaluate with React-compatible events
       async () => {
         const ok = await page.evaluate((u) => {
           const inp = document.querySelector('#login_loginid_input_01') ||
@@ -372,6 +397,7 @@ async function harvestQuota() {
         await sleep(3000);
         console.log('    DOM native setter + React events');
       },
+      // M6: loop all inputs
       async () => {
         const all = await page.$$('input');
         if (!all.length) throw new Error('no inputs at all');
@@ -390,6 +416,7 @@ async function harvestQuota() {
         }
         throw new Error('no visible non-password input');
       },
+      // M7: keyboard Tab from body
       async () => {
         await page.focus('body');
         await sleep(3000);
@@ -399,6 +426,7 @@ async function harvestQuota() {
         await sleep(3000);
         console.log('    Tab from body + type');
       },
+      // M8: click first input regardless of type
       async () => {
         await page.click('input');
         await sleep(3000);
@@ -410,10 +438,12 @@ async function harvestQuota() {
 
     console.log('  [OK] Service number entered\n');
 
+    // Human-like pause after username
     const delay2 = randomDelay(5000, 8000);
     console.log('  [HUMAN] pause', delay2, 'ms');
     await sleep(delay2);
 
+    // Wait for dropdown/search input to appear after username triggers React re-render
     console.log('  Waiting for service type input to appear...');
     await withTimeout(
       page.waitForFunction(() => !!document.querySelector('#login_input_type_01, .ant-select, .ant-select-selector, [class*="select"]'), { timeout: 15000 }),
@@ -421,6 +451,7 @@ async function harvestQuota() {
     ).catch(() => console.log('  [WARN] Dropdown wait timed out, proceeding anyway'));
     await sleep(1000);
 
+    // Log dropdown state
     const dropdownDiag = await withTimeout(page.evaluate(() => ({
       antSelect: !!document.querySelector('.ant-select'),
       antSelectSelector: !!document.querySelector('.ant-select-selector'),
@@ -430,8 +461,11 @@ async function harvestQuota() {
     })), 5000, 'dropdown diag').catch(() => null);
     console.log('  Dropdown state:', JSON.stringify(dropdownDiag));
 
+    // ======================================
     console.log('STEP 3: DROPDOWN');
+    // ======================================
     await tryMethods([
+      // M0: New search-input style (#login_input_type_01) ” WE updated portal
       async () => {
         const searchInput = await page.$('#login_input_type_01');
         if (!searchInput) throw new Error('search input not found');
@@ -450,6 +484,7 @@ async function harvestQuota() {
         const val = await page.evaluate(() => (document.querySelector('.ant-select-selector')?.innerText||'') + (document.querySelector('#login_input_type_01')?.value||''));
         if (!val.toLowerCase().includes('internet')) throw new Error('Internet not confirmed: ' + val);
       },
+      // M1: Classic ant-select
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
@@ -513,11 +548,14 @@ async function harvestQuota() {
 
     console.log('  [OK] Dropdown done\n');
 
+    // Human-like pause before password
     const delay3 = randomDelay(5000, 8000);
     console.log('  [HUMAN] pause', delay3, 'ms');
     await sleep(delay3);
 
+    // ======================================
     console.log('STEP 4: PASSWORD');
+    // ======================================
     await sleep(500);
     await tryMethods([
       async () => {
@@ -575,11 +613,14 @@ async function harvestQuota() {
 
     console.log('  [OK] Password done\n');
 
+    // Human-like pause before submit
     const delay4 = randomDelay(5000, 8000);
     console.log('  [HUMAN] pause', delay4, 'ms');
     await sleep(delay4);
 
+    // ======================================
     console.log('STEP 5: SUBMIT');
+    // ======================================
     await tryMethods([
       async () => {
         await page.evaluate(() => {
@@ -613,6 +654,9 @@ async function harvestQuota() {
       }
     ], 'SUBMIT', 20000);
 
+    // ======================================
+    // POST-SUBMIT: Race - URL change vs captcha modal vs block
+    // ======================================
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown';
     for (let tick = 0; tick < 30; tick++) {
@@ -622,14 +666,16 @@ async function harvestQuota() {
         console.log('  [OK] URL changed to:', currentUrl);
         break;
       }
+      // Check for captcha OR block message
       const pageState = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
         const text = document.body.innerText.toLowerCase();
         const hasCaptcha = !!modal || text.includes('verification') || text.includes('enter code');
+        // Detect WE block messages
         const isBlocked = text.includes('maximum') || text.includes('too many') ||
                           text.includes('exceeded') || text.includes('try again') ||
-                          text.includes('blocked') || text.includes('محاولات') ||
-                          text.includes('الحد الاقصى') || text.includes('مره اخرى');
+                          text.includes('blocked') || text.includes('ظ…ط­ط§ظˆظ„ط§طھ') ||
+                          text.includes('ط§ظ„ط­ط¯ ط§ظ„ط§ظ‚طµظ‰') || text.includes('ظ…ط±ظ‡ ط§ط®ط±ظ‰');
         return { hasCaptcha, isBlocked, text: text.slice(0, 200) };
       });
 
@@ -648,6 +694,7 @@ async function harvestQuota() {
       await sleep(1000);
     }
 
+    // IP block or silent fail — switch to Tor and retry login
     if (postLoginState === "blocked" || postLoginState === "unknown") {
       await clearCookies();
       if (!useTor) {
@@ -660,6 +707,7 @@ async function harvestQuota() {
           browser = await launchBrowser(true);
           page = await setupPage();
           console.log("  [TOR] Browser relaunched through Tor — retrying login...");
+          // Jump back to login steps
           throw new Error("TOR_RETRY: Relaunched through Tor, retry needed");
         } catch(torErr) {
           if (torErr.message.startsWith("TOR_RETRY")) throw torErr;
@@ -667,15 +715,20 @@ async function harvestQuota() {
           throw new Error("WE_BLOCKED: IP blocked and Tor setup failed");
         }
       } else {
+        // Already on Tor — rotate circuit and throw to trigger outer retry
         console.log("  [TOR] Already on Tor, rotating circuit...");
         await rotateTorCircuit();
         throw new Error("TOR_CIRCUIT_ROTATED: New circuit, retry login");
       }
     }
 
+    // ======================================
+    // CAPTCHA ENGINE v4 (only if captcha was detected)
+    // ======================================
     if (postLoginState === 'captcha') {
       console.log('  [CAPTCHA] Ultimate Engine v4 starting...\n');
 
+      // HELPER: Find the captcha image (largest img inside modal)
       async function findCaptchaImg() {
         return await page.evaluateHandle(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
@@ -693,8 +746,11 @@ async function harvestQuota() {
         });
       }
 
+      // HELPER: Fetch captcha image â€” tries Node-side HTTP first (bypasses browser IP block),
+      // then falls back to in-browser XHR, then canvas naturalWidth
       async function fetchCaptchaBase64() {
         try {
+          // Step 1: get the image URL from the DOM
           const imgSrc = await page.evaluate(() => {
             const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
             if (!modal) return null;
@@ -712,6 +768,7 @@ async function harvestQuota() {
           if (imgSrc.startsWith('data:image')) return imgSrc;
           console.log('    [FETCH] Image URL:', imgSrc.slice(0, 80));
 
+          // Step 2: Node-side fetch — route through Tor SOCKS5 if torActive, otherwise direct
           try {
             const pageCookies = await page.cookies();
             const cookieStr = pageCookies.map(c => c.name + '=' + c.value).join('; ');
@@ -742,6 +799,7 @@ async function harvestQuota() {
             console.log('    [FETCH] Node-side err:', nodeErr.message);
           }
 
+          // Step 3: In-browser XHR fallback
           const b64xhr = await page.evaluate(async (url) => new Promise(resolve => {
             const xhr = new XMLHttpRequest();
             xhr.open('GET', url, true); xhr.responseType = 'blob';
@@ -751,6 +809,7 @@ async function harvestQuota() {
           }), imgSrc);
           if (b64xhr) { console.log('    [FETCH] XHR fallback OK'); return b64xhr; }
 
+          // Step 4: fetch() API in browser context
           const b64fetch = await page.evaluate(async (url) => {
             try {
               const r = await fetch(url, { credentials: 'include' });
@@ -766,6 +825,9 @@ async function harvestQuota() {
         } catch(e) { console.log('    [FETCH] err:', e.message); return null; }
       }
 
+
+      // HELPER: Canvas preprocessing — 6 filters targeting WE captcha
+      // WE captcha: mixed upper+lower+digits, dot noise background, diagonal line crossing
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
@@ -785,18 +847,25 @@ async function harvestQuota() {
             const sat = max === 0 ? 0 : (max - min) / max;
             let keep = false;
             if (f === 'dark') {
+              // Keep dark pixels — text is darker than dots/bg
               keep = lum < 130;
             } else if (f === 'dark2') {
+              // Slightly looser dark threshold to catch faded chars
               keep = lum < 160;
             } else if (f === 'nodots') {
-              keep = lum < 120 && sat < 0.6;
+              // Remove isolated bright dots + line: keep only mid-dark non-isolated pixels
+              // Two-pass not possible in one evaluate, so use strict lum + saturation
+              keep = lum < 120 && sat < 0.6; // text chars: dark + low saturation
             } else if (f === 'color') {
+              // Keep any strongly colored (non-gray) pixel — catches colored text chars
               keep = sat > 0.25 && lum < 200;
             } else if (f === 'red') {
+              // Red/warm text isolation (WE uses reddish chars)
               keep = r > 80 && (r - g) > 20 && (r - b) > 10;
             } else if (f === 'invert') {
+              // Invert: white bg becomes black, dark text becomes white → then re-binarize
               const inv_lum = 255 - lum;
-              keep = inv_lum < 130;
+              keep = inv_lum < 130; // keep what was bright (text on dark bg variant)
             }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
             d[i+3] = 255;
@@ -806,11 +875,13 @@ async function harvestQuota() {
         }, imgHandle, filter);
       }
 
+      // HELPER: OCR with multiple PSM modes — returns all candidate strings
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
         const seen = new Set();
         const whitelist = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        // Try PSM 8 (single word), 7 (single line), 6 (uniform block) — all mixed case
         for (const psm of ['8', '7', '6']) {
           try {
             const r = await Tesseract.recognize(imageData, 'eng', {
@@ -820,11 +891,12 @@ async function harvestQuota() {
             });
             const t = r.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
             if (t && !seen.has(t)) { seen.add(t); results.push(t); }
-          } catch(e) { }
+          } catch(e) { /* ignore individual PSM failures */ }
         }
         return results;
       }
 
+      // HELPER: Submit captcha answer into modal input
       async function submitAnswer(answer) {
         console.log('    -> Submitting:', answer);
         const ok = await page.evaluate((ans) => {
@@ -843,6 +915,7 @@ async function harvestQuota() {
           const btn = allBtns.find(b => /ok|confirm|submit|verify/i.test(b.textContent)) ||
                       modal.querySelector('button.ant-btn-primary') ||
                       allBtns[allBtns.length - 1];
+          console.log('[captcha] Clicking:', btn ? btn.textContent.trim() : 'none', '/', allBtns.length, 'btns');
           if (btn) btn.click();
           return true;
         }, answer);
@@ -852,6 +925,7 @@ async function harvestQuota() {
           await page.keyboard.type(answer, { delay: 60 });
           await sleep(500); await page.keyboard.press('Enter');
         }
+        // Wait up to 8s: navigated = success, modal gone = possible redirect pending
         for (let w = 0; w < 8; w++) {
           await sleep(1000);
           if (!page.url().includes('login')) return true;
@@ -866,6 +940,7 @@ async function harvestQuota() {
         return !page.url().includes('login');
       }
 
+      // HELPER: Check if modal is still open
       async function isModalOpen() {
         return await page.evaluate(() => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
@@ -873,12 +948,42 @@ async function harvestQuota() {
         });
       }
 
+      // HELPER: Re-trigger captcha by clicking Login again
+      async function retriggerLogin() {
+        console.log('    -> Modal closed, re-clicking Login...');
+        await page.evaluate(() => {
+          const btns = Array.from(document.querySelectorAll('button'));
+          const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+          if (btn) btn.click();
+        });
+        // Wait for captcha modal to reappear
+        for (let w = 0; w < 15; w++) {
+          await sleep(1000);
+          const hasModal = await page.evaluate(() => {
+            const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+            return !!modal;
+          });
+          if (hasModal) {
+            console.log('    -> New captcha modal appeared');
+            await sleep(2000);
+            return true;
+          }
+          // Check if we navigated away (login succeeded without captcha this time)
+          if (!page.url().includes('login')) return false;
+        }
+        return false;
+      }
+
+      // MAIN CAPTCHA LOOP (6 rounds ” enough to solve, avoids IP block from too many attempts)
+      // 6 filters targeting WE captcha: mixed case+digits, dot bg, diagonal line
+      // 6 filters targeting WE captcha: mixed case+digits, dot bg, diagonal line
       const FILTERS = ['dark', 'dark2', 'nodots', 'color', 'red', 'invert'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 4 && !captchaSolved; round++) {
         console.log('  -- Round', round, '/ 4 --');
 
+        // Wait for captcha modal (from round 2 onward)
         if (round > 1) {
           let modalFound = false;
           for (let w = 0; w < 10; w++) {
@@ -904,12 +1009,14 @@ async function harvestQuota() {
         }
 
         try {
+          // Fetch image via XHR first (bypasses naturalWidth=0 on datacenter IPs)
           let imageData = null;
           for (let retry = 0; retry < 5; retry++) {
             imageData = await fetchCaptchaBase64();
             if (imageData) { console.log('    [XHR] Image OK, length:', imageData.length); break; }
             await sleep(1500);
           }
+          // Canvas img handle as fallback
           let imgHandle = null;
           for (let retry = 0; retry < 6; retry++) {
             imgHandle = await findCaptchaImg();
@@ -919,6 +1026,7 @@ async function harvestQuota() {
           }
           if (!imageData && !imgHandle) { console.log('    ! No captcha image from any method'); continue; }
 
+          // Collect all OCR candidates across all filters + score by frequency
           const candidates = new Map();
           const addCandidate = (t, score) => {
             if (t && t.length >= 4 && t.length <= 6) {
@@ -926,6 +1034,7 @@ async function harvestQuota() {
             }
           };
 
+          // Canvas filter pass
           if (imgHandle) {
             for (const filter of FILTERS) {
               const b64 = await canvasProcess(imgHandle, filter);
@@ -935,17 +1044,21 @@ async function harvestQuota() {
               texts.forEach((t, idx) => addCandidate(t, idx === 0 ? 2 : 1));
             }
           }
+          // Raw XHR image OCR pass
           if (imageData) {
             const texts = await ocrRead(imageData);
             console.log('    [xhr-raw] OCR:', JSON.stringify(texts));
             texts.forEach((t, idx) => addCandidate(t, idx === 0 ? 2 : 1));
           }
 
-          if (candidates.size === 0) { console.log('    ! No valid answer candidates — skipping'); continue; }
+          if (candidates.size === 0) { console.log('    ! No valid answer candidates ” skipping'); continue; }
 
+          // Pick highest-scored candidate
           const bestAnswer = [...candidates.entries()].sort((a, b) => b[1] - a[1])[0][0];
           console.log('    Candidates:', JSON.stringify([...candidates.entries()]), '-> best:', bestAnswer);
 
+          // WE captcha is MIXED case (upper + lower + digits)
+          // Try: as-read (preserves mixed case OCR), then all-upper, then all-lower
           const variants = [...new Set([bestAnswer, bestAnswer.toUpperCase(), bestAnswer.toLowerCase()])];
           console.log('    Trying variants:', variants);
 
@@ -957,7 +1070,7 @@ async function harvestQuota() {
             }
             console.log('    X Wrong "' + attempt + '", trying next variant...');
             await sleep(1500);
-            if (!await isModalOpen()) break;
+            if (!await isModalOpen()) break; // modal gone ” blocked or solved
           }
           if (!captchaSolved) console.log('    All variants failed, next round...');
         } catch (e) {
@@ -975,9 +1088,12 @@ async function harvestQuota() {
       }
     }
 
+    // ======================================
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
+    // ======================================
     console.log('  “ Login successful!\n');
 
+    // Save session cookies for next run (avoids login entirely if session still valid)
     try {
       const cookies = await page.cookies();
       const relevantCookies = cookies.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
@@ -986,29 +1102,39 @@ async function harvestQuota() {
       }
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
-    }
+    } // end if (!sessionValid)
 
+    // â”€â”€ Ad/Popup Dismissal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // WE portal shows promotional ads that can block page content.
+    // Dismiss any overlay/ad modal before proceeding.
     async function dismissAds() {
       try {
         const dismissed = await page.evaluate(() => {
           let count = 0;
+          // Try all common close button patterns
           const selectors = [
+            // SVG X close buttons (top-right of modal)
             'button[class*="close"]',
             'button[aria-label*="close" i]',
             'button[aria-label*="dismiss" i]',
             '[class*="modal"] button[class*="close"]',
             '[class*="popup"] button[class*="close"]',
             '[class*="overlay"] button[class*="close"]',
+            // Ant Design modal close
             '.ant-modal-close',
             '.ant-modal-close-x',
+            // Generic X buttons not inside the main form
             'button svg[class*="close"]',
+            // Close icons by position (top-right absolute/fixed divs)
             '[style*="position: fixed"] button',
             '[style*="position:fixed"] button',
+            // Any element with X text that looks like a close button
           ];
           for (const sel of selectors) {
             const els = Array.from(document.querySelectorAll(sel));
             for (const el of els) {
               const rect = el.getBoundingClientRect();
+              // Must be visible and not the main login/submit button
               if (rect.width > 0 && rect.height > 0) {
                 const text = el.textContent?.trim() || '';
                 const isMainAction = /login|submit|confirm|ok$/i.test(text) && text.length > 1;
@@ -1019,6 +1145,7 @@ async function harvestQuota() {
               }
             }
           }
+          // Also try clicking outside modal (backdrop dismiss)
           const backdrop = document.querySelector('.ant-modal-mask, [class*="backdrop"], [class*="overlay-bg"]');
           if (backdrop && count === 0) { backdrop.click(); count++; }
           return count;
@@ -1027,21 +1154,30 @@ async function harvestQuota() {
           console.log('  [AD] Dismissed', dismissed, 'ad/popup element(s)');
           await sleep(1000);
         }
-      } catch(e) { }
+      } catch(e) { /* non-critical */ }
     }
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+
+    // Dismiss any WE promotional ads before extracting data
     await dismissAds();
 
+    // ══════════════════════════════════════════
     console.log('STEP 6: EXTRACT');
+    // ══════════════════════════════════════════
 
+    // Guard: if we got bounced back to login during navigation, fail fast
     async function checkNotBounced() {
       if (page.url().includes('login')) throw new Error('SESSION_BOUNCED: redirected back to login during extract');
     }
 
     const data = await tryMethods([
+      // M1: Walk ALL spans/divs, find ones whose text is ONLY a decimal number,
+      // then check if a nearby sibling contains "Remaining" or "Used"
       async () => {
         await sleep(2000);
         await checkNotBounced();
+        // Wait for balance card to load (extra wait if balance not yet visible)
         await withTimeout(
           page.waitForFunction(() => {
             const text = document.body.innerText;
@@ -1056,6 +1192,7 @@ async function harvestQuota() {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
 
+          // Helper: is this text a plain decimal number (with optional commas)?
           function isNumericText(t) {
             if (!t) return false;
             const stripped = t.replace(/,/g, '').trim();
@@ -1066,6 +1203,7 @@ async function harvestQuota() {
             const t = spans[i].innerText?.trim();
             if (!t || t.length > 100) continue;
 
+            // Find "Remaining" label ” check i-1, i-2 for the number
             if (t === 'Remaining') {
               for (let back = 1; back <= 3; back++) {
                 if (i - back >= 0) {
@@ -1075,6 +1213,7 @@ async function harvestQuota() {
               }
             }
 
+            // Find "Used" label ” check i-1, i-2 for the number
             if (t === 'Used') {
               for (let back = 1; back <= 3; back++) {
                 if (i - back >= 0) {
@@ -1084,6 +1223,7 @@ async function harvestQuota() {
               }
             }
 
+            // Balance: "Current Balance" label then look forward for EGP number
             if (t === 'Current Balance') {
               for (let fwd = 1; fwd <= 8; fwd++) {
                 if (i + fwd < spans.length) {
@@ -1093,9 +1233,11 @@ async function harvestQuota() {
               }
             }
 
+            // Plan: contains "GB" and "Speed"
             if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
 
+          // Fallback: if balance still not found, try regex on full page text
           if (!balance) {
             const text = document.body.innerText;
             const bMatch = text.match(/Current Balance\s*[\n\r\s]*([\d,]+\.?\d+)/i)
@@ -1116,11 +1258,13 @@ async function harvestQuota() {
         console.log('    M1 numeric-only sibling scan');
         return parsed;
       },
+      // M2: innerText of whole page, regex number BEFORE label word (on same or adjacent line)
       async () => {
         await sleep(5000);
         await checkNotBounced();
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
+          // The page renders: "1,391.34\nRemaining" or "1,391.34 Remaining"
           const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
           const u = text.match(/([\d,]+\.?\d+)\s*\n?\s*Used/i);
           const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)
@@ -1144,6 +1288,7 @@ async function harvestQuota() {
         console.log('    M2 page text regex number-before-label');
         return parsed;
       },
+      // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
         await checkNotBounced();
@@ -1166,7 +1311,9 @@ async function harvestQuota() {
     console.log('  Balance:', data.balance, 'EGP');
     console.log('  Plan:', data.plan, '\n');
 
+    // ======================================
     console.log('STEP 7: FIRESTORE');
+    // ======================================
     const now = new Date().toISOString();
     const fields = {
       '104': { mapValue: { fields: {
@@ -1208,7 +1355,9 @@ async function harvestQuota() {
 
     console.log('  “ Uploaded to quota_latest!\n');
 
+    // ======================================
     console.log('STEP 8: LEDGER (quota_history)');
+    // ======================================
     const historyFields = {
       timestamp: { stringValue: now },
       user: { stringValue: 'GitHub Cloud' },
@@ -1245,7 +1394,12 @@ async function harvestQuota() {
 
     console.log('  “ Ledger updated!\n');
 
+    // ======================================
     console.log('STEP 8.5: LOW QUOTA FLAG');
+    // ======================================
+    // Write flag to Firestore quota_settings/alerts
+    // line104_low: true  ’ hourly workflow will run full harvest
+    // line104_low: false ’ hourly workflow will skip (normal 2h schedule handles it)
     try {
       const isLow104 = data.remaining < 100;
       const alertFields = {
@@ -1267,9 +1421,9 @@ async function harvestQuota() {
       }
     } catch(e) {
       console.log('    Flag write error (non-critical):', e.message);
-    }
-
+    }    // ======================================
     console.log('STEP 9: TELEGRAM');
+    // ======================================
     try {
       const date = new Date().toLocaleString('en-GB', {
         timeZone: 'Africa/Cairo',
@@ -1277,27 +1431,37 @@ async function harvestQuota() {
         hour: '2-digit', minute: '2-digit'
       });
 
+      // Quota alert level
+      // Quota alert level
       const rem = data.remaining;
       let alertLine = '';
       if (rem < 30)       alertLine = '\n🚨 *CRITICAL - Under 30 GB! Recharge immediately!*';
       else if (rem < 50)  alertLine = '\n⚠️ *CRITICAL - Under 50 GB!*';
       else if (rem < 100) alertLine = '\n⚠️ *WARNING - Under 100 GB*';
 
+      // Status icon based on level
       const statusIcon = rem < 50 ? '🔴' : rem < 100 ? '🟡' : '🟢';
 
       const msg = [
         '📊 *Cairo Taj - Line 104 Harvest*',
         '',
-        `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
-        `📉 Used: *${data.used.toFixed(2)} GB*`,
-        `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
-        `📋 Plan: ${data.plan}`,
-        `🕐 ${date}`,
-        `🤖 GitHub Cloud` + alertLine
+        
+`${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
+        
+`📉 Used: *${data.used.toFixed(2)} GB*`,
+        
+`💰 Balance: *${data.balance.toFixed(2)} EGP*`,
+        
+`📋 Plan: ${data.plan}`,
+        
+`🕐 ${date}`,
+        
+`🤖 GitHub Cloud` + alertLine
       ].join('\n');
 
       const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
+      // Send main harvest message to personal chat AND group (if configured)
       const recipients = [TELEGRAM_CHAT_ID];
       if (TELEGRAM_GROUP_ID) recipients.push(TELEGRAM_GROUP_ID);
 
@@ -1315,6 +1479,8 @@ async function harvestQuota() {
       if (!tgSuccess) throw new Error('All Telegram sends failed');
       console.log('  “ Telegram sent!\n');
 
+      // CRITICAL ALERT: Under 30 GB ” send a separate urgent message
+      // This triggers a second notification/ringtone on the phone
       if (rem < 30) {
         const criticalMsg = {
           text: ['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', ' ï¸ڈ *Cairo Taj ” Line 104*',
@@ -1331,6 +1497,7 @@ async function harvestQuota() {
       }
 
     } catch (e) {
+      // Telegram failure should NOT fail the whole harvest
       console.log('    Telegram failed (non-critical):', e.message);
     }
     console.log('پپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپپ');
@@ -1366,19 +1533,22 @@ async function main() {
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
+      // If WE blocked us, don't retry ” it will make things worse
       if (error.message && error.message.includes('WE_BLOCKED')) {
         console.error('⛔ WE block detected - stopping retries to avoid extending the block period');
         console.error('🔁 Will retry on next scheduled run automatically');
         process.exit(1);
       }
+      // TOR_RETRY: relaunched through Tor, retry immediately (don't count as failed attempt)
       if (error.message && error.message.startsWith('TOR_RETRY')) {
         console.log('  [TOR] Immediate retry through Tor (not counting as failed attempt)...');
-        attempt--; 
+        attempt--; // don't consume a retry slot
         continue;
       }
+      // TOR_CIRCUIT_ROTATED: new Tor circuit, wait 5s then retry (don't count as failed)
       if (error.message && error.message.startsWith('TOR_CIRCUIT_ROTATED')) {
         console.log('  [TOR] Circuit rotated -- retrying in 5s (not counting as failed attempt)...');
-        attempt--; 
+        attempt--; // don't consume a retry slot
         await sleep(5000);
         continue;
       }
@@ -1395,3 +1565,5 @@ async function main() {
 }
 
 main();
+
+
