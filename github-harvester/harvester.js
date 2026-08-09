@@ -342,7 +342,6 @@ async function harvestQuota() {
     // Dismiss any ads before this step
     await dismissAds();
     // Login loop - restarts through Tor if IP blocked
-    let switcherCapturedData = null; // declared outside loop
     async function dismissAds() {
       try {
         const dismissed = await page.evaluate(() => {
@@ -1546,7 +1545,7 @@ async function harvestQuota() {
         await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 30000 });
         await sleep(3000);
         if (page.url().includes('#/login')) throw new Error('SESSION_DIED: redirected to login');
-        // Re-switch to line 094 (same logic as Step 5.5)
+        // Re-authenticate and re-fetch after vigilance round
         await page.waitForFunction(() => {
           const t = document.body.innerText;
           return t.includes('currently managing') || t.includes('Remaining');
