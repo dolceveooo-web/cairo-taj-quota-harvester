@@ -422,8 +422,14 @@ async function harvestQuota() {
       // M5: domcontentloaded + very long sleep
       async () => {
         await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'domcontentloaded', timeout: 40000 });
-        await sleep(20000);
-        console.log('    domcontentloaded + 20s sleep');
+        await sleep(8000);
+        // Wait up to 25s for SPA to render the login form inputs
+        for (let w = 0; w < 25; w++) {
+          const cnt = await page.evaluate(() => document.querySelectorAll('input').length);
+          if (cnt >= 1) { console.log('    SPA rendered after ' + (8+w) + 's, inputs:', cnt); break; }
+          await sleep(1000);
+        }
+        console.log('    domcontentloaded + wait for SPA render');
       }
     ], 'NAVIGATE', 55000);
 
