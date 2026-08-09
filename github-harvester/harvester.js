@@ -283,7 +283,7 @@ async function harvestQuota() {
       // Existing stealth injections (unchanged)
       await p.evaluateOnNewDocument((ua, ver, vp) => {
         window.alert = () => {}; window.confirm = () => true; window.prompt = () => "";
-        Object.defineProperty(window, "console", { writable: false, configurable: false });
+        // console protection removed - breaks React SPA rendering
         Object.defineProperty(navigator, "webdriver", { get: () => false });
         window.navigator.chrome = { runtime: {} };
         Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });
