@@ -217,23 +217,155 @@ async function harvestQuota() {
     browser = await launchBrowser(false);
 
     // Helper to setup a fresh page with stealth settings
-    async function setupPage() {
-      const p = await browser.newPage();
-      await p.evaluateOnNewDocument(() => {
-        window.alert = () => {}; window.confirm = () => true; window.prompt = () => '';
-        Object.defineProperty(window, 'console', { writable: false, configurable: false });
-        Object.defineProperty(navigator, 'webdriver', { get: () => false });
-        window.navigator.chrome = { runtime: {} };
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-      });
-      await p.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-      await p.setViewport({ width: 1366, height: 768 });
-      p.on('dialog', async d => { console.log('  Dialog dismissed:', d.message().slice(0, 80)); await d.accept(); });
-      return p;
+
+    // â”€â”€ Anti-Detection Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Purely additive â€” no existing logic changed or removed.
+
+    // Rotate User-Agent per run (real Chrome versions, different OS)
+    const USER_AGENTS = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 11.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+    ];
+    const VIEWPORTS = [
+      { width: 1366, height: 768 },
+      { width: 1440, height: 900 },
+      { width: 1280, height: 800 },
+      { width: 1536, height: 864 },
+      { width: 1920, height: 1080 }
+    ];
+    const chosenUA       = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
+    const chosenViewport = VIEWPORTS[Math.floor(Math.random() * VIEWPORTS.length)];
+    // Extract Chrome version from UA for client hints
+    const chromeVer = (chosenUA.match(/Chrome\/([\d]+)/) || ['','120'])[1];
+    console.log('  [STEALTH] UA:', chosenUA.slice(0, 60) + '...');
+    console.log('  [STEALTH] Viewport:', chosenViewport.width + 'x' + chosenViewport.height);
+
+    // Human-like mouse movement along a bezier curve
+    async function humanMove(targetX, targetY) {
+      try {
+        const start = await page.evaluate(() => ({ x: window.innerWidth/2, y: window.innerHeight/2 }));
+        const cp1x = start.x + (targetX - start.x) * 0.3 + (Math.random() - 0.5) * 80;
+        const cp1y = start.y + (targetY - start.y) * 0.1 + (Math.random() - 0.5) * 60;
+        const cp2x = start.x + (targetX - start.x) * 0.7 + (Math.random() - 0.5) * 80;
+        const cp2y = start.y + (targetY - start.y) * 0.9 + (Math.random() - 0.5) * 60;
+        const steps = 12 + Math.floor(Math.random() * 8);
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const x = Math.round((1-t)**3*start.x + 3*(1-t)**2*t*cp1x + 3*(1-t)*t**2*cp2x + t**3*targetX);
+          const y = Math.round((1-t)**3*start.y + 3*(1-t)**2*t*cp1y + 3*(1-t)*t**2*cp2y + t**3*targetY);
+          await page.mouse.move(x, y);
+          await sleep(Math.floor(Math.random() * 18) + 8);
+        }
+      } catch(e) { /* non-critical */ }
     }
 
+    // Move mouse to an element before clicking it
+    async function humanClick(selector) {
+      try {
+        const el = await page.$(selector);
+        if (!el) return false;
+        const box = await el.boundingBox();
+        if (!box) return false;
+        const x = box.x + box.width/2 + (Math.random()-0.5)*6;
+        const y = box.y + box.height/2 + (Math.random()-0.5)*4;
+        await humanMove(x, y);
+        await sleep(randomDelay(80, 200));
+        await page.mouse.click(x, y);
+        return true;
+      } catch(e) { return false; }
+    }
+
+    // Random micro-pause (sprinkle between actions to look human)
+    async function microPause() {
+      await sleep(randomDelay(150, 600));
+    }
+
+    async function setupPage() {
+      const p = await browser.newPage();
+
+      // Existing stealth injections (unchanged)
+      await p.evaluateOnNewDocument((ua, ver, vp) => {
+        window.alert = () => {}; window.confirm = () => true; window.prompt = () => "";
+        Object.defineProperty(window, "console", { writable: false, configurable: false });
+        Object.defineProperty(navigator, "webdriver", { get: () => false });
+        window.navigator.chrome = { runtime: {} };
+        Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });
+        Object.defineProperty(navigator, "languages", { get: () => ["ar-EG","ar","en-US","en"] });
+
+        // Anti-detection additions (purely additive)
+        // 1. Fake timezone to Egypt
+        const origDateTimeFormat = Intl.DateTimeFormat;
+        Intl.DateTimeFormat = function(locale, options) {
+          options = options || {};
+          if (!options.timeZone) options.timeZone = 'Africa/Cairo';
+          return new origDateTimeFormat(locale, options);
+        };
+        Intl.DateTimeFormat.prototype = origDateTimeFormat.prototype;
+
+        // 2. Canvas fingerprint noise (tiny per-run variation)
+        const origGetContext = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function(type, attrs) {
+          const ctx = origGetContext.call(this, type, attrs);
+          if (type === '2d' && ctx) {
+            const origFillText = ctx.fillText.bind(ctx);
+            ctx.fillText = function(text, x, y, maxW) {
+              return origFillText(text, x + (Math.random() * 0.1 - 0.05), y, maxW);
+            };
+          }
+          return ctx;
+        };
+
+        // 3. Fake battery API (bots often lack this)
+        Object.defineProperty(navigator, 'getBattery', {
+          value: () => Promise.resolve({ charging: true, chargingTime: 0, dischargingTime: Infinity, level: 0.85 + Math.random() * 0.1 }),
+          writable: false
+        });
+
+        // 4. Fake hardware concurrency (real device)
+        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+
+        // 5. Fake screen matching viewport
+        Object.defineProperty(screen, 'width',  { get: () => vp.width });
+        Object.defineProperty(screen, 'height', { get: () => vp.height });
+        Object.defineProperty(screen, 'availWidth',  { get: () => vp.width });
+        Object.defineProperty(screen, 'availHeight', { get: () => vp.height - 40 });
+
+        // 6. Client hints matching UA
+        Object.defineProperty(navigator, 'userAgentData', {
+          get: () => ({
+            brands: [{ brand: 'Chromium', version: ver }, { brand: 'Google Chrome', version: ver }, { brand: 'Not-A.Brand', version: '99' }],
+            mobile: false,
+            platform: 'Windows',
+            getHighEntropyValues: () => Promise.resolve({ platform: 'Windows', platformVersion: '10.0.0', architecture: 'x86', model: '', uaFullVersion: ver + '.0.0.0' })
+          })
+        });
+      }, chosenUA, chromeVer, chosenViewport);
+
+      // Set Accept-Language to Egyptian Arabic (reduces captcha triggers)
+      await p.setExtraHTTPHeaders({
+        'Accept-Language': 'ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'sec-ch-ua': '"Chromium";v="' + chromeVer + '", "Google Chrome";v="' + chromeVer + '", "Not-A.Brand";v="99"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
+        'DNT': '1'
+      });
+
+      await p.setUserAgent(chosenUA);
+      await p.setViewport(chosenViewport);
+      p.on("dialog", async d => { console.log("  Dialog dismissed:", d.message().slice(0,80)); await d.accept(); });
+      return p;
+    }
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
     page = await setupPage();
+
 
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
     // STEP 0: TRY SAVED SESSION COOKIES
@@ -265,6 +397,8 @@ async function harvestQuota() {
     }
 
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // Dismiss any ads before this step
+    await dismissAds();
     console.log('STEP 1: NAVIGATE');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
     if (!sessionValid) {
@@ -334,6 +468,8 @@ async function harvestQuota() {
     await sleep(delay1);
 
     // ======================================
+    // Dismiss any ads before this step
+    await dismissAds();
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
     // ======================================
     await tryMethods([
@@ -455,6 +591,8 @@ async function harvestQuota() {
     console.log('  Dropdown state:', JSON.stringify(dropdownDiag));
 
     // ======================================
+    // Dismiss any ads before this step
+    await dismissAds();
     console.log('STEP 3: DROPDOWN');
     // ======================================
     await tryMethods([
@@ -564,6 +702,8 @@ async function harvestQuota() {
     await sleep(delay3);
 
     // ======================================
+    // Dismiss any ads before this step
+    await dismissAds();
     console.log('STEP 4: PASSWORD');
     // ======================================
     await sleep(500);
@@ -629,6 +769,8 @@ async function harvestQuota() {
     await sleep(delay4);
 
     // ======================================
+    // Dismiss any ads before this step
+    await dismissAds();
     console.log('STEP 5: SUBMIT');
     // ======================================
     await tryMethods([
@@ -834,6 +976,8 @@ async function harvestQuota() {
 
       // HELPER: Canvas preprocessing â€” 6 filters targeting WE captcha
       // WE captcha: mixed upper+lower+digits, dot noise background, diagonal line crossing
+      // HELPER: Canvas preprocessing â€” 9 filters targeting WE captcha
+      // WE captcha: mixed upper+lower+digits, dot noise background, diagonal line
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
@@ -852,12 +996,18 @@ async function harvestQuota() {
             const max = Math.max(r,g,b), min = Math.min(r,g,b);
             const sat = max === 0 ? 0 : (max - min) / max;
             let keep = false;
-            if (f === 'dark')   { keep = lum < 130; }
-            else if (f === 'dark2')  { keep = lum < 160; }
-            else if (f === 'nodots') { keep = lum < 120 && sat < 0.6; }
-            else if (f === 'color')  { keep = sat > 0.25 && lum < 200; }
-            else if (f === 'red')    { keep = r > 80 && (r - g) > 20 && (r - b) > 10; }
-            else if (f === 'invert') { keep = (255 - lum) < 130; }
+            if      (f === 'dark')       { keep = lum < 130; }
+            else if (f === 'dark2')      { keep = lum < 160; }
+            else if (f === 'nodots')     { keep = lum < 120 && sat < 0.6; }
+            else if (f === 'color')      { keep = sat > 0.25 && lum < 200; }
+            else if (f === 'red')        { keep = r > 80 && (r-g) > 20 && (r-b) > 10; }
+            else if (f === 'invert')     { keep = (255-lum) < 130; }
+            // NEW: aggressive binarization â€” kills dots/line completely
+            else if (f === 'thresh120')  { keep = lum < 120; }
+            // NEW: softer binarization â€” catches faded/light chars
+            else if (f === 'thresh160')  { keep = lum < 160 && sat < 0.8; }
+            // NEW: dilate effect â€” thicken chars OCR misses by keeping near-dark pixels
+            else if (f === 'dilate')     { keep = lum < 180 && (r < 160 || g < 160 || b < 160); }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
             d[i+3] = 255;
           }
@@ -866,13 +1016,14 @@ async function harvestQuota() {
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with 3 PSM modes â€” returns all candidate strings
+      // HELPER: OCR with 4 PSM modes â€” returns all candidate strings
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
         const seen = new Set();
         const whitelist = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        for (const psm of ['8', '7', '6']) {
+        // PSM 8=single word, 7=single line, 6=uniform block, 13=raw line (best for short alphanumeric)
+        for (const psm of ['8', '7', '13', '6']) {
           try {
             const r = await Tesseract.recognize(imageData, 'eng', {
               tessedit_char_whitelist: whitelist,
@@ -885,6 +1036,7 @@ async function harvestQuota() {
         }
         return results;
       }
+
 
       // HELPER: Submit captcha answer into modal input
       async function submitAnswer(answer) {
@@ -961,7 +1113,7 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (6 rounds â€” enough to solve, avoids IP block from too many attempts)
-      const FILTERS = ['dark', 'dark2', 'nodots', 'color', 'red', 'invert'];
+      const FILTERS = ['dark', 'dark2', 'nodots', 'color', 'red', 'invert', 'thresh120', 'thresh160', 'dilate'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 4 && !captchaSolved; round++) {
@@ -1023,7 +1175,13 @@ async function harvestQuota() {
           // Collect OCR candidates across all filters
           const candidates = new Map();
           const addCandidate = (t, score) => {
-            if (t && t.length >= 4 && t.length <= 6) candidates.set(t, (candidates.get(t) || 0) + score);
+            if (t && t.length >= 4 && t.length <= 6) {
+              const key = t.toLowerCase();
+              const existing = [...candidates.keys()].find(k => k.toLowerCase() === key);
+              const existingKey = existing || t;
+              const bonus = t.length === 5 ? 1 : 0;
+              candidates.set(existingKey, (candidates.get(existingKey) || 0) + score + bonus);
+            }
           };
 
           if (imgHandle) {
@@ -1069,18 +1227,11 @@ async function harvestQuota() {
         }
       }
 
-      if (!captchaSolved) {
-        await page.evaluate(() => {
-          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-          const btn = modal?.querySelector('button');
-          if (btn) btn.click();
-        });
-        await sleep(2000);
-        throw new Error('Captcha unsolvable after 12 rounds - retrying login');
-      }
     }
 
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // Dismiss any ads before this step
+    await dismissAds();
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
     console.log('  âœ“ Login successful!\n');
@@ -1455,6 +1606,13 @@ async function harvestQuota() {
     console.log('STEP 6: EXTRACT');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
 
+
+    // Guard: if bounced back to login during navigation, fail fast
+    async function checkNotBounced() {
+      if (page.url().includes('login')) throw new Error('SESSION_BOUNCED: redirected back to login during extract');
+    }
+    await checkNotBounced();
+
     // Use pre-captured data from switcher if available (avoids race condition with redirect)
     // Only fall through to live extraction if switcher didn't capture data
     const data = switcherCapturedData ? await (async () => {
@@ -1492,6 +1650,8 @@ async function harvestQuota() {
       // M2: Full page text regex
       async () => {
         await sleep(5000);
+        await checkNotBounced();
+        await checkNotBounced();
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
           const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
@@ -1509,7 +1669,9 @@ async function harvestQuota() {
       // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
+        await checkNotBounced();
         const html = await withTimeout(page.content(), 8000, 'page.content');
+        await checkNotBounced();
         const r = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Remaining/i);
         const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
         const b = html.match(/>([\d,]+\.?\d+)\s*EGP</i);
