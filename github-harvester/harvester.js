@@ -279,6 +279,12 @@ async function harvestQuota() {
 
     async function setupPage() {
       const p = await browser.newPage();
+      // Suppress WE's console-blocking alert dialogs (does NOT affect React)
+      await p.evaluateOnNewDocument(() => {
+        window.alert = () => {};
+        window.confirm = () => true;
+        window.prompt = () => '';
+      });
 
       // Existing stealth injections (unchanged)
       // evaluateOnNewDocument removed - was breaking React SPA rendering
@@ -336,6 +342,7 @@ async function harvestQuota() {
     // Dismiss any ads before this step
     await dismissAds();
     // Login loop - restarts through Tor if IP blocked
+    let switcherCapturedData = null; // declared outside loop
     async function dismissAds() {
       try {
         const dismissed = await page.evaluate(() => {
@@ -421,8 +428,14 @@ async function harvestQuota() {
       // M5: domcontentloaded + very long sleep
       async () => {
         await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'domcontentloaded', timeout: 40000 });
-        await sleep(20000);
-        console.log('    domcontentloaded + 20s sleep');
+        await sleep(8000);
+        // Wait up to 25s for SPA to render the login form inputs
+        for (let w = 0; w < 25; w++) {
+          const cnt = await page.evaluate(() => document.querySelectorAll('input').length);
+          if (cnt >= 1) { console.log('    SPA rendered after ' + (8+w) + 's, inputs:', cnt); break; }
+          await sleep(1000);
+        }
+        console.log('    domcontentloaded + wait for SPA render');
       }
     ], 'NAVIGATE', 55000);
 
@@ -1232,7 +1245,6 @@ async function harvestQuota() {
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
     } // end if (!sessionValid)
-    } while (torLoginRestart); // restart login through Tor if needed
 
     // â”€â”€ Ad/Popup Dismissal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // WE portal shows promotional ads that can block page content.
@@ -1241,12 +1253,11 @@ async function harvestQuota() {
 
 
 
-<<<<<<< HEAD
-    } while (torLoginRestart); // restart login through Tor if needed
-=======
     // Dismiss any WE promotional ads
     await dismissAds();
->>>>>>> parent of 94c6cc7 (Update harvester.js)
+
+    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    } while (torLoginRestart); // restart login through Tor if needed
 
     console.log('STEP 6: EXTRACT');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
@@ -1258,21 +1269,12 @@ async function harvestQuota() {
     }
     await checkNotBounced();
 
-<<<<<<< HEAD
-    const data = await tryMethods([
-=======
     // Use pre-captured data from switcher if available (avoids race condition with redirect)
     // Only fall through to live extraction if switcher didn't capture data
-    const data = switcherCapturedData ? await (async () => {
-      console.log('  [FAST PATH] Using data captured during line switch (race-condition safe)');
-      console.log('    M1 numeric-only sibling scan');
-      return switcherCapturedData;
-    })() : await tryMethods([
+    const data = await tryMethods([
       // M1: Walk ALL spans/divs â€” numeric sibling scan
       async () => {
->>>>>>> parent of 8f3e240 (fix: remove garbled chars from console output)
         await sleep(2000);
-      async () => {
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
@@ -1468,7 +1470,7 @@ async function harvestQuota() {
       const statusIcon = rem < 50 ? 'ًں”´' : rem < 100 ? 'ًںں ' : 'âœ…';
 
       const msg = [
-        'ًں“، *Cairo Taj â€” Line 104 Harvest*',
+        'ًں“، *Cairo Taj â€” Dokki Harvest*',
         '',
         `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
         `ًں“‰ Used: *${data.used.toFixed(2)} GB*`,
@@ -1590,7 +1592,7 @@ async function harvestQuota() {
             used:      { doubleValue: vData.used },
             plan:      { stringValue: vData.plan },
             updatedAt: { stringValue: vNow },
-            updatedBy: { stringValue: 'GitHub Cloud âڑ، Dokki [VIGILANCE]' },
+            updatedBy: { stringValue: 'GitHub Cloud âڑ، Line 104 [VIGILANCE]' },
             status:    { stringValue: 'success' }
           }}},
           lastUpdate: { stringValue: vNow }
@@ -1601,7 +1603,7 @@ async function harvestQuota() {
         if (!res.ok) throw new Error('Firestore HTTP ' + res.status);
         const vHistory = {
           timestamp: { stringValue: vNow },
-          user: { stringValue: 'GitHub Cloud âڑ، Dokki [VIGILANCE]' },
+          user: { stringValue: 'GitHub Cloud âڑ، Line 104 [VIGILANCE]' },
           notes: { stringValue: 'vigilance-mode' },
           dokki: { mapValue: { fields: { quota: { doubleValue: vData.remaining }, balance: { doubleValue: vData.balance } } } },
           '104': { mapValue: { fields: { quota: { nullValue: null }, balance: { nullValue: null } } } },
