@@ -336,6 +336,56 @@ async function harvestQuota() {
     // Dismiss any ads before this step
     await dismissAds();
     // Login loop - restarts through Tor if IP blocked
+    async function dismissAds() {
+      try {
+        const dismissed = await page.evaluate(() => {
+          let count = 0;
+          // Try all common close button patterns
+          const selectors = [
+            // SVG X close buttons (top-right of modal)
+            'button[class*="close"]',
+            'button[aria-label*="close" i]',
+            'button[aria-label*="dismiss" i]',
+            '[class*="modal"] button[class*="close"]',
+            '[class*="popup"] button[class*="close"]',
+            '[class*="overlay"] button[class*="close"]',
+            // Ant Design modal close
+            '.ant-modal-close',
+            '.ant-modal-close-x',
+            // Generic X buttons not inside the main form
+            'button svg[class*="close"]',
+            // Close icons by position (top-right absolute/fixed divs)
+            '[style*="position: fixed"] button',
+            '[style*="position:fixed"] button',
+            // Any element with X text that looks like a close button
+          ];
+          for (const sel of selectors) {
+            const els = Array.from(document.querySelectorAll(sel));
+            for (const el of els) {
+              const rect = el.getBoundingClientRect();
+              // Must be visible and not the main login/submit button
+              if (rect.width > 0 && rect.height > 0) {
+                const text = el.textContent?.trim() || '';
+                const isMainAction = /login|submit|confirm|ok$/i.test(text) && text.length > 1;
+                if (!isMainAction) {
+                  el.click();
+                  count++;
+                }
+              }
+            }
+          }
+          // Also try clicking outside modal (backdrop dismiss)
+          const backdrop = document.querySelector('.ant-modal-mask, [class*="backdrop"], [class*="overlay-bg"]');
+          if (backdrop && count === 0) { backdrop.click(); count++; }
+          return count;
+        });
+        if (dismissed > 0) {
+          console.log('  [AD] Dismissed', dismissed, 'ad/popup element(s)');
+          await sleep(1000);
+        }
+      } catch(e) { /* non-critical */ }
+    }
+
     do {
     torLoginRestart = false;
     console.log('STEP 1: NAVIGATE');
@@ -1187,55 +1237,6 @@ async function harvestQuota() {
     // â”€â”€ Ad/Popup Dismissal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // WE portal shows promotional ads that can block page content.
     // Dismiss any overlay/ad modal before proceeding.
-    async function dismissAds() {
-      try {
-        const dismissed = await page.evaluate(() => {
-          let count = 0;
-          // Try all common close button patterns
-          const selectors = [
-            // SVG X close buttons (top-right of modal)
-            'button[class*="close"]',
-            'button[aria-label*="close" i]',
-            'button[aria-label*="dismiss" i]',
-            '[class*="modal"] button[class*="close"]',
-            '[class*="popup"] button[class*="close"]',
-            '[class*="overlay"] button[class*="close"]',
-            // Ant Design modal close
-            '.ant-modal-close',
-            '.ant-modal-close-x',
-            // Generic X buttons not inside the main form
-            'button svg[class*="close"]',
-            // Close icons by position (top-right absolute/fixed divs)
-            '[style*="position: fixed"] button',
-            '[style*="position:fixed"] button',
-            // Any element with X text that looks like a close button
-          ];
-          for (const sel of selectors) {
-            const els = Array.from(document.querySelectorAll(sel));
-            for (const el of els) {
-              const rect = el.getBoundingClientRect();
-              // Must be visible and not the main login/submit button
-              if (rect.width > 0 && rect.height > 0) {
-                const text = el.textContent?.trim() || '';
-                const isMainAction = /login|submit|confirm|ok$/i.test(text) && text.length > 1;
-                if (!isMainAction) {
-                  el.click();
-                  count++;
-                }
-              }
-            }
-          }
-          // Also try clicking outside modal (backdrop dismiss)
-          const backdrop = document.querySelector('.ant-modal-mask, [class*="backdrop"], [class*="overlay-bg"]');
-          if (backdrop && count === 0) { backdrop.click(); count++; }
-          return count;
-        });
-        if (dismissed > 0) {
-          console.log('  [AD] Dismissed', dismissed, 'ad/popup element(s)');
-          await sleep(1000);
-        }
-      } catch(e) { /* non-critical */ }
-    }
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
