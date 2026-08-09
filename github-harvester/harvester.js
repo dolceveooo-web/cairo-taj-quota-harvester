@@ -337,6 +337,9 @@ async function harvestQuota() {
     await dismissAds();
     console.log('STEP 1: NAVIGATE');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // Login loop - restarts through Tor if IP blocked
+    do {
+    torLoginRestart = false;
     if (!sessionValid) {
     await tryMethods([
       // M1: EXACT same as working local harvester
@@ -796,7 +799,9 @@ async function harvestQuota() {
         browser = await launchBrowser(true);
         page = await setupPage();
         console.log('  [TOR] Browser relaunched through Tor - retrying login...');
-        throw new Error('TOR_RETRY: relaunched through Tor');
+        console.log('  [TOR] Browser ready through Tor - restarting login sequence...');
+        torLoginRestart = true;
+        break; // exit login sequence, restart via loop
       } catch(torErr) {
         if (torErr.message.startsWith('TOR_RETRY')) throw torErr;
         console.log('  [TOR] Setup failed:', torErr.message);
@@ -1177,6 +1182,7 @@ async function harvestQuota() {
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
     } // end if (!sessionValid)
+    } while (torLoginRestart); // restart login through Tor if needed
 
     // â”€â”€ Ad/Popup Dismissal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // WE portal shows promotional ads that can block page content.
