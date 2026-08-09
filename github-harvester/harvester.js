@@ -281,42 +281,8 @@ async function harvestQuota() {
       const p = await browser.newPage();
 
       // Existing stealth injections (unchanged)
-      await p.evaluateOnNewDocument((ua, ver, vp) => {
-        window.alert = () => {}; window.confirm = () => true; window.prompt = () => "";
-        // console protection removed - breaks React SPA rendering
-        Object.defineProperty(navigator, "webdriver", { get: () => false });
-        window.navigator.chrome = { runtime: {} };
-        Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });
-        Object.defineProperty(navigator, "languages", { get: () => ["en-US","en"] });
-
-        // Anti-detection additions (purely additive)
-        // 1. Fake timezone to Egypt
-        const origDateTimeFormat = Intl.DateTimeFormat;
-        Intl.DateTimeFormat = function(locale, options) {
-          options = options || {};
-          if (!options.timeZone) options.timeZone = 'Africa/Cairo';
-          return new origDateTimeFormat(locale, options);
-        };
-        Intl.DateTimeFormat.prototype = origDateTimeFormat.prototype;
-
-        // 2. Canvas fingerprint noise (tiny per-run variation)
-        const origGetContext = HTMLCanvasElement.prototype.getContext;
-        HTMLCanvasElement.prototype.getContext = function(type, attrs) {
-          const ctx = origGetContext.call(this, type, attrs);
-          if (type === '2d' && ctx) {
-            const origFillText = ctx.fillText.bind(ctx);
-            ctx.fillText = function(text, x, y, maxW) {
-              return origFillText(text, x + (Math.random() * 0.1 - 0.05), y, maxW);
-            };
-          }
-          return ctx;
-        };
-
-        // 3. Fake battery API (bots often lack this)
-        Object.defineProperty(navigator, 'getBattery', {
-          value: () => Promise.resolve({ charging: true, chargingTime: 0, dischargingTime: Infinity, level: 0.85 + Math.random() * 0.1 }),
-          writable: false
-        });
+      // evaluateOnNewDocument removed - was breaking React SPA rendering
+      // Stealth plugin handles bot detection automatically
 
         // 4. Fake hardware concurrency (real device)
         Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
