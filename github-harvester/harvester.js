@@ -1234,10 +1234,7 @@ async function harvestQuota() {
     }
     await checkNotBounced();
 
-    // Use pre-captured data from switcher if available (avoids race condition with redirect)
-    // Only fall through to live extraction if switcher didn't capture data
-    })() : await tryMethods([
-      async () => {
+    const data = await tryMethods([
         await sleep(2000);
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
