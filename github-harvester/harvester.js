@@ -303,7 +303,6 @@ async function harvestQuota() {
             getHighEntropyValues: () => Promise.resolve({ platform: 'Windows', platformVersion: '10.0.0', architecture: 'x86', model: '', uaFullVersion: ver + '.0.0.0' })
           })
         });
-      }, chosenUA, chromeVer, chosenViewport);
 
       // Set Accept-Language to Egyptian Arabic (reduces captcha triggers)
       await p.setExtraHTTPHeaders({
