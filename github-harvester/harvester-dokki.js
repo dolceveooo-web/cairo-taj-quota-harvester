@@ -864,7 +864,7 @@ async function harvestQuota() {
         console.log('  [TOR] Browser relaunched through Tor - retrying login...');
         console.log('  [TOR] Browser ready through Tor - restarting login sequence...');
         torLoginRestart = true;
-        break; // exit login sequence, restart via loop
+        // (no break - let do-while condition restart the loop)
       } catch(torErr) {
         if (torErr.message.startsWith('TOR_RETRY')) throw torErr;
         console.log('  [TOR] Setup failed:', torErr.message);
