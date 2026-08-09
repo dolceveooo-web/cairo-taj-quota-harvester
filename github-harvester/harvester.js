@@ -395,25 +395,25 @@ async function harvestQuota() {
     await tryMethods([
       // M1: EXACT same as working local harvester
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+        await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'networkidle2', timeout: 30000 });
         await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
         console.log('    networkidle2 + wait for 2 inputs (local harvester method)');
       },
       // M2: domcontentloaded + wait for 2 inputs
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+        await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'domcontentloaded', timeout: 40000 });
         await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
         console.log('    domcontentloaded + wait for 2 inputs');
       },
       // M3: load + wait for 2 inputs
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'load', timeout: 40000 });
+        await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'load', timeout: 40000 });
         await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
         console.log('    load + wait for 2 inputs');
       },
       // M4: no wait + long sleep + check inputs
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { timeout: 40000 });
+        await page.goto('https://my.te.eg/echannel/#/login', { timeout: 40000 });
         await sleep(15000);
         const count = await page.evaluate(() => document.querySelectorAll('input').length);
         if (count < 1) throw new Error(`Only ${count} inputs found`);
@@ -421,7 +421,7 @@ async function harvestQuota() {
       },
       // M5: domcontentloaded + very long sleep
       async () => {
-        await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+        await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'domcontentloaded', timeout: 40000 });
         await sleep(20000);
         console.log('    domcontentloaded + 20s sleep');
       }
@@ -1743,11 +1743,11 @@ async function harvestQuota() {
         // Full fresh login
         await tryMethods([
           async () => {
-            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'networkidle2', timeout: 30000 });
             await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
           },
           async () => {
-            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+            await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'domcontentloaded', timeout: 40000 });
             await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
           }
         ], 'VIGILANCE RE-NAVIGATE', 55000);
