@@ -279,6 +279,12 @@ async function harvestQuota() {
 
     async function setupPage() {
       const p = await browser.newPage();
+      // Suppress WE's console-blocking alert dialogs (does NOT affect React)
+      await p.evaluateOnNewDocument(() => {
+        window.alert = () => {};
+        window.confirm = () => true;
+        window.prompt = () => '';
+      });
 
       // Existing stealth injections (unchanged)
       // evaluateOnNewDocument removed - was breaking React SPA rendering
