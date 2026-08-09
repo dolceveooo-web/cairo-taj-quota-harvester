@@ -285,17 +285,10 @@ async function harvestQuota() {
       // Stealth plugin handles bot detection automatically
 
         // 4. Fake hardware concurrency (real device)
-        Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
-        Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
 
         // 5. Fake screen matching viewport
-        Object.defineProperty(screen, 'width',  { get: () => vp.width });
-        Object.defineProperty(screen, 'height', { get: () => vp.height });
-        Object.defineProperty(screen, 'availWidth',  { get: () => vp.width });
-        Object.defineProperty(screen, 'availHeight', { get: () => vp.height - 40 });
 
         // 6. Client hints matching UA
-        Object.defineProperty(navigator, 'userAgentData', {
           get: () => ({
             brands: [{ brand: 'Chromium', version: ver }, { brand: 'Google Chrome', version: ver }, { brand: 'Not-A.Brand', version: '99' }],
             mobile: false,
@@ -1990,10 +1983,6 @@ async function harvestQuota() {
         await page.evaluateOnNewDocument(() => {
           window.alert = () => {}; window.confirm = () => true; window.prompt = () => '';
           Object.defineProperty(window, 'console', { writable: false, configurable: false });
-          Object.defineProperty(navigator, 'webdriver', { get: () => false });
-          window.navigator.chrome = { runtime: {} };
-          Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-          Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
         });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         await page.setViewport({ width: 1366, height: 768 });
