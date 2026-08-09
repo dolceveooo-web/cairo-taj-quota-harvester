@@ -287,7 +287,7 @@ async function harvestQuota() {
         Object.defineProperty(navigator, "webdriver", { get: () => false });
         window.navigator.chrome = { runtime: {} };
         Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });
-        Object.defineProperty(navigator, "languages", { get: () => ["ar-EG","ar","en-US","en"] });
+        Object.defineProperty(navigator, "languages", { get: () => ["en-US","en"] });
 
         // Anti-detection additions (purely additive)
         // 1. Fake timezone to Egypt
@@ -341,8 +341,6 @@ async function harvestQuota() {
 
       // Set Accept-Language to Egyptian Arabic (reduces captcha triggers)
       await p.setExtraHTTPHeaders({
-        'Accept-Language': 'ar-EG,ar;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'sec-ch-ua': '"Chromium";v="' + chromeVer + '", "Google Chrome";v="' + chromeVer + '", "Not-A.Brand";v="99"',
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
