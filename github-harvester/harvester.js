@@ -284,18 +284,6 @@ async function harvestQuota() {
       // evaluateOnNewDocument removed - was breaking React SPA rendering
       // Stealth plugin handles bot detection automatically
 
-        // 4. Fake hardware concurrency (real device)
-
-        // 5. Fake screen matching viewport
-
-        // 6. Client hints matching UA
-          get: () => ({
-            brands: [{ brand: 'Chromium', version: ver }, { brand: 'Google Chrome', version: ver }, { brand: 'Not-A.Brand', version: '99' }],
-            mobile: false,
-            platform: 'Windows',
-            getHighEntropyValues: () => Promise.resolve({ platform: 'Windows', platformVersion: '10.0.0', architecture: 'x86', model: '', uaFullVersion: ver + '.0.0.0' })
-          })
-        });
 
       // Set Accept-Language to Egyptian Arabic (reduces captcha triggers)
       await p.setExtraHTTPHeaders({
