@@ -336,6 +336,7 @@ async function harvestQuota() {
     // Dismiss any ads before this step
     await dismissAds();
     // Login loop - restarts through Tor if IP blocked
+    let switcherCapturedData = null; // declared outside loop
     do {
     torLoginRestart = false;
     console.log('STEP 1: NAVIGATE');
@@ -1379,7 +1380,6 @@ async function harvestQuota() {
     }
 
     // The captured data from inside the switcher (avoids race condition)
-    let switcherCapturedData = null;
 
     await tryMethods([
       // M1: Click dropdown â†’ select 0237600094 â†’ capture data immediately on confirmation
