@@ -38,26 +38,17 @@ async function ensureTor() {
   console.log('  [TOR] SOCKS5 port 9050 ready');
 }
 
-// Request a new Tor circuit (new exit IP)
+// Request a new Tor circuit via SIGHUP (no control port needed)
 async function rotateTorCircuit() {
   torCircuitCount++;
-  console.log('  [TOR] Requesting new circuit #' + torCircuitCount + '...');
+  console.log('  [TOR] New circuit request #' + torCircuitCount);
   try {
-    // Send NEWNYM signal via Tor control port
-    await new Promise((resolve, reject) => {
-      const s = net.createConnection({ port: 9051, host: '127.0.0.1' }, () => {
-        s.write('AUTHENTICATE ""\r\nSIGNAL NEWNYM\r\nQUIT\r\n');
-        s.on('data', () => {});
-        s.on('end', resolve);
-        setTimeout(() => { s.destroy(); resolve(); }, 3000);
-      });
-      s.on('error', reject);
-    });
-    await sleep(3000); // Wait for new circuit to establish
-    console.log('  [TOR] New circuit ready');
+    execSync('sudo kill -HUP $(pgrep -x tor) 2>/dev/null || true', { stdio: 'ignore', timeout: 5000 });
+    await sleep(4000);
+    console.log('  [TOR] Circuit rotated via SIGHUP');
   } catch(e) {
-    console.log('  [TOR] Circuit rotation failed (non-fatal):', e.message);
-    await sleep(2000);
+    console.log('  [TOR] SIGHUP warning (non-fatal):', e.message);
+    await sleep(3000);
   }
 }
 
@@ -214,6 +205,7 @@ async function harvestQuota() {
 
   try {
     let useTor = false;
+    let torRetryCount = 0;
     browser = await launchBrowser(false);
 
     // Helper to setup a fresh page with stealth settings
@@ -843,31 +835,28 @@ async function harvestQuota() {
       await sleep(1000);
     }
 
-    // IP block or silent fail — switch to Tor and retry login
+    // IP block or silent fail â€” switch to Tor and retry (max 2 Tor retries)
     if (postLoginState === "blocked" || postLoginState === "unknown") {
       await clearCookies();
-      if (!useTor) {
-        console.log("  [TOR] IP block detected — switching to Tor for retry...");
-        try {
-          await ensureTor();
-          await browser.close(); browser = null;
-          await rotateTorCircuit();
-          useTor = true; torActive = true;
-          browser = await launchBrowser(true);
-          page = await setupPage();
-          console.log("  [TOR] Browser relaunched through Tor — retrying login...");
-          // Jump back to login steps
-          throw new Error("TOR_RETRY: Relaunched through Tor, retry needed");
-        } catch(torErr) {
-          if (torErr.message.startsWith("TOR_RETRY")) throw torErr;
-          console.log("  [TOR] Setup failed:", torErr.message, "— giving up");
-          throw new Error("WE_BLOCKED: IP blocked and Tor setup failed");
-        }
-      } else {
-        // Already on Tor — rotate circuit and throw to trigger outer retry
-        console.log("  [TOR] Already on Tor, rotating circuit...");
+      if (torRetryCount >= 2) {
+        console.log('  [TOR] Max Tor retries (2) reached - giving up');
+        throw new Error('WE_BLOCKED: IP blocked and Tor circuits exhausted');
+      }
+      torRetryCount++;
+      console.log('  [TOR] IP block - switching to Tor (retry ' + torRetryCount + '/2)...');
+      try {
+        await ensureTor();
+        if (browser) { try { await browser.close(); } catch(e2) {} browser = null; }
         await rotateTorCircuit();
-        throw new Error("TOR_CIRCUIT_ROTATED: New circuit, retry login");
+        useTor = true; torActive = true;
+        browser = await launchBrowser(true);
+        page = await setupPage();
+        console.log('  [TOR] Browser relaunched through Tor - retrying login...');
+        throw new Error('TOR_RETRY: relaunched through Tor');
+      } catch(torErr) {
+        if (torErr.message.startsWith('TOR_RETRY')) throw torErr;
+        console.log('  [TOR] Setup failed:', torErr.message);
+        throw new Error('WE_BLOCKED: IP blocked and Tor setup failed');
       }
     }
 
@@ -2201,7 +2190,7 @@ async function main() {
       }
       if (error.message && error.message.startsWith('TOR_RETRY')) {
         console.log('  [TOR] Immediate retry through Tor (not counting as failed)...');
-        attempt--;
+        // Do NOT decrement attempt -- prevents infinite loop
         continue;
       }
       if (error.message && error.message.startsWith('TOR_CIRCUIT_ROTATED')) {
