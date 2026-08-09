@@ -328,7 +328,6 @@ async function harvestQuota() {
     // Dismiss any ads before this step
     await dismissAds();
     // Login loop - restarts through Tor if IP blocked
-    let switcherCapturedData = null; // declared outside loop
     async function dismissAds() {
       try {
         const dismissed = await page.evaluate(() => {
@@ -413,14 +412,8 @@ async function harvestQuota() {
       // M5: domcontentloaded + very long sleep
       async () => {
         await page.goto('https://my.te.eg/echannel/#/login', { waitUntil: 'domcontentloaded', timeout: 40000 });
-        await sleep(8000);
-        // Wait up to 25s for SPA to render the login form inputs
-        for (let w = 0; w < 25; w++) {
-          const cnt = await page.evaluate(() => document.querySelectorAll('input').length);
-          if (cnt >= 1) { console.log('    SPA rendered after ' + (8+w) + 's, inputs:', cnt); break; }
-          await sleep(1000);
-        }
-        console.log('    domcontentloaded + wait for SPA render');
+        await sleep(20000);
+        console.log('    domcontentloaded + 20s sleep');
       }
     ], 'NAVIGATE', 55000);
 
@@ -1217,13 +1210,19 @@ async function harvestQuota() {
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
     } // end if (!sessionValid)
+    } while (torLoginRestart); // restart login through Tor if needed
 
     // WE portal shows promotional ads that can block page content.
     // Dismiss any overlay/ad modal before proceeding.
 
 
 
+<<<<<<< HEAD
     } while (torLoginRestart); // restart login through Tor if needed
+=======
+    // Dismiss any WE promotional ads
+    await dismissAds();
+>>>>>>> parent of 94c6cc7 (Update harvester.js)
 
     console.log('STEP 6: EXTRACT');
 
@@ -1236,6 +1235,7 @@ async function harvestQuota() {
 
     const data = await tryMethods([
         await sleep(2000);
+      async () => {
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
