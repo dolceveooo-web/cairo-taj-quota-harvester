@@ -1188,7 +1188,6 @@ async function harvestQuota() {
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
     } // end if (!sessionValid)
-    } while (torLoginRestart); // restart login through Tor if needed
 
     // â”€â”€ Ad/Popup Dismissal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // WE portal shows promotional ads that can block page content.
@@ -1553,6 +1552,8 @@ async function harvestQuota() {
     await dismissAds();
 
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    } while (torLoginRestart); // restart full login+switch through Tor if needed
+
     console.log('STEP 6: EXTRACT');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
 
