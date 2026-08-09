@@ -1247,6 +1247,11 @@ async function harvestQuota() {
     console.log('STEP 5.5: LINE SWITCHER (Dokki)');
     // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
     console.log('  Switching to line 0237600094...');
+    // Wait for session to fully stabilize before switching lines
+    console.log('  Waiting 8s for session to stabilize...');
+    await sleep(8000);
+    // Verify still logged in before switching
+    if (page.url().includes('login')) throw new Error('SESSION_LOST: Redirected to login before line switch');
 
     // CRITICAL: The WE portal does a session refresh after line switch that can
     // redirect back to #/login within seconds. The only reliable approach is to
@@ -1406,7 +1411,7 @@ async function harvestQuota() {
           const check = await checkPage094();
 
           // If stuck on login after 5s, fail this method
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login after line switch');
+          if (url.includes('#/login') && w > 3) throw new Error('Redirected to login after line switch');
 
           // CRITICAL: Must satisfy ALL conditions for valid capture:
           // 1. check.hasRemaining = true (data visible)
@@ -1469,7 +1474,7 @@ async function harvestQuota() {
           const url = page.url();
           const check = await checkPage094();
 
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+          if (url.includes('#/login') && w > 3) throw new Error('Redirected to login');
 
           // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
@@ -1506,7 +1511,7 @@ async function harvestQuota() {
           const url = page.url();
           const check = await checkPage094();
 
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+          if (url.includes('#/login') && w > 3) throw new Error('Redirected to login');
 
           // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
