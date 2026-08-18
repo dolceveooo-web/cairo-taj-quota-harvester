@@ -32,7 +32,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd github-harvester
-          npm install --prefer-offline --no-audit
+          npm install --no-audit
       
       - name: Run harvester
         env:
