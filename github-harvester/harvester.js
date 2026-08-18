@@ -606,7 +606,7 @@ async function harvestQuota() {
           });
           for (const img of imgs) {
             const r = img.getBoundingClientRect();
-            if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
+            if (r.width > 80 && r.height > 25) return img; // naturalWidth check removed - blocked on datacenter IPs
           }
           return null;
         });
