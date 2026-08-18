@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer-extra');
+﻿const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fetch = require('node-fetch');
 
@@ -38,12 +38,12 @@ async function withTimeout(promise, ms, name) {
 async function tryMethods(methods, stepName, timeout) {
   for (let i = 0; i < methods.length; i++) {
     try {
-      console.log(`  [${i+1}/${methods.length}]`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
       const result = await withTimeout(methods[i](), timeout, `${stepName} M${i+1}`);
-      console.log(`  ✓ Method ${i+1} SUCCESS`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
       return result;
     } catch (e) {
-      console.log(`  ✗ Method ${i+1} FAILED: ${e.message}`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
       if (i === methods.length - 1) throw new Error(`${stepName} ALL METHODS FAILED`);
       await sleep(500);
     }
@@ -200,7 +200,7 @@ async function harvestQuota() {
         await sleep(15000);
         const count = await page.evaluate(() => document.querySelectorAll('input').length);
         if (count < 1) throw new Error(`Only ${count} inputs found`);
-        console.log(`    no wait + 15s sleep, found ${count} inputs`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
       },
       // M5: domcontentloaded + very long sleep
       async () => {
@@ -232,7 +232,7 @@ async function harvestQuota() {
     console.log('  URL:', diag.url);
     console.log('  Inputs found:', diag.inputCount);
     console.log('  .ant-select:', diag.hasAntSelect, ' .ant-input:', diag.hasAntInput);
-    diag.inputs.forEach(inp => console.log(`    [${inp.i}] id="${inp.id}" type="${inp.type}" placeholder="${inp.placeholder}" visible=${inp.visible}`));
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
     console.log('  --- END DIAGNOSTICS ---\n');
 
     // Human-like pause before typing
@@ -306,12 +306,12 @@ async function harvestQuota() {
           const info = await all[i].evaluate(el => ({
             type: el.type, visible: el.offsetParent !== null, id: el.id
           }));
-          console.log(`    input[${i}] id="${info.id}" type="${info.type}" visible=${info.visible}`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
           if (info.type !== 'password' && info.type !== 'hidden' && info.visible) {
             await all[i].click(); await sleep(3000);
             await all[i].type(WE_USERNAME, { delay: randomDelay(100, 200) });
             await sleep(3000);
-            console.log(`    used input[${i}]`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
             return;
           }
         }
@@ -364,7 +364,35 @@ async function harvestQuota() {
     // ======================================
     console.log('STEP 3: DROPDOWN');
     // ======================================
+    // Log dropdown state before attempting
+    const _ddDiag = await withTimeout(page.evaluate(() => ({
+      antSelect: !!document.querySelector('.ant-select'),
+      antSelectSelector: !!document.querySelector('.ant-select-selector'),
+      searchInput: !!document.querySelector('#login_input_type_01'),
+      anySelect: !!document.querySelector('[class*="select"]'),
+      selectText: document.querySelector('.ant-select-selector')?.innerText || document.querySelector('#login_input_type_01')?.value || null
+    })), 5000, 'dropdown diag').catch(() => null);
+    console.log('  Dropdown state:', JSON.stringify(_ddDiag));
+
     await tryMethods([
+      // M0: New search-input style (#login_input_type_01)
+      async () => {
+        const si = await page.$('#login_input_type_01');
+        if (!si) throw new Error('search input not found');
+        await si.click(); await sleep(500);
+        await si.evaluate(el => { el.value=''; el.dispatchEvent(new Event('input',{bubbles:true})); });
+        await si.type('Internet', { delay: 80 }); await sleep(1000);
+        const clicked = await page.evaluate(() => {
+          const opts = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [class*="option"]'));
+          const inet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
+          if (inet) { inet.click(); return inet.textContent.trim(); } return null;
+        });
+        if (!clicked) { await page.keyboard.press('ArrowDown'); await sleep(300); await page.keyboard.press('Enter'); }
+        else { console.log('    M0: search input + clicked:', clicked); }
+        await sleep(800);
+        const val = await page.evaluate(() => (document.querySelector('.ant-select-selector')?.innerText||'') + (document.querySelector('#login_input_type_01')?.value||''));
+        if (!val.toLowerCase().includes('internet')) throw new Error('Internet not confirmed: ' + val);
+      },
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
@@ -483,7 +511,7 @@ async function harvestQuota() {
             await all[i].click(); await sleep(3000);
             await all[i].type(WE_PASSWORD, { delay: randomDelay(100, 200) });
             await sleep(3000);
-            console.log(`    loop found password at input[${i}]`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
             return;
           }
         }
@@ -997,6 +1025,26 @@ async function harvestQuota() {
         });
         if (!clicked) throw new Error('Option 0237600094 not found');
         console.log('    Clicked:', clicked);
+        // Wait 7s for page to settle + dismiss ad if present
+        console.log('    Waiting 7s for page to settle after line switch...');
+        await sleep(7000);
+        try {
+          await page.evaluate(() => {
+            const sels = ['button[class*="close"]','.ant-modal-close','.ant-modal-close-x','[style*="position: fixed"] button','[style*="position:fixed"] button'];
+            for (const sel of sels) {
+              for (const el of document.querySelectorAll(sel)) {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0) {
+                  const t = el.textContent?.trim() || '';
+                  if (!/^(login|submit|confirm|ok)$/i.test(t)) el.click();
+                }
+              }
+            }
+            const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
+            if (bd) bd.click();
+          });
+          console.log('    Ad dismiss done');
+        } catch(e) { console.log('    Ad dismiss skipped:', e.message); }
 
         // Poll aggressively — capture data THE MOMENT the page shows 0237600094 AND full data loaded
         for (let w = 0; w < 30; w++) {
@@ -1396,6 +1444,299 @@ async function harvestQuota() {
     console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
+    // ══════════════════════════════════════════════════════════════
+    // VIGILANCE MODE — triggered when quota ≤ 50 GB (Dokki)
+    // Stays in same session, refreshes every 13 minutes, harvests
+    // until quota ≤ 2 GB or session dies (then restarts + re-switches line).
+    // Only sends Telegram for Dokki — other line unaffected.
+    // ══════════════════════════════════════════════════════════════
+    if (data.remaining <= 50) {
+      console.log('\n🔴 VIGILANCE MODE ACTIVATED (DOKKI) — quota=' + data.remaining.toFixed(2) + ' GB ≤ 50 GB');
+      console.log('  Will harvest every 13 min until quota ≤ 2 GB or job time limit reached.\n');
+
+      const VIGILANCE_INTERVAL_MS = 13 * 60 * 1000;
+      const VIGILANCE_MAX_MS      = 5 * 60 * 60 * 1000 + 45 * 60 * 1000;
+      const VIGILANCE_STOP_GB     = 2;
+      const vigilanceStart        = Date.now();
+      let   vigilanceRound        = 0;
+      let   lastRemaining         = data.remaining;
+
+      // ── Helper: refresh to account overview and re-switch to line 094 ──
+      async function vigilanceRefreshPage() {
+        await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 30000 });
+        await sleep(3000);
+        if (page.url().includes('#/login')) throw new Error('SESSION_DIED: redirected to login');
+        // Re-switch to line 094 (same logic as Step 5.5)
+        await page.waitForFunction(() => {
+          const t = document.body.innerText;
+          return t.includes('currently managing') || t.includes('Remaining');
+        }, { timeout: 15000 }).catch(() => {});
+        await sleep(1500);
+        const dropdowns = await page.$$('.ant-select-selector, .ant-select');
+        if (dropdowns.length) {
+          await dropdowns[0].click();
+          await sleep(1500);
+          await page.evaluate(() => {
+            const opts = Array.from(document.querySelectorAll('.ant-select-item-option-content, .ant-select-item, li, option'));
+            const t = opts.find(o => o.textContent && o.textContent.includes('0237600094'));
+            if (t) t.click();
+          });
+        }
+        // Wait for full 094 data (same 6-condition gate)
+        for (let w = 0; w < 30; w++) {
+          await sleep(1000);
+          if (page.url().includes('#/login') && w > 5) throw new Error('SESSION_DIED: redirected to login after line switch');
+          const check = await checkPage094();
+          if (check.hasRemaining && check.has094) {
+            const captured = await extractNow();
+            if (captured) {
+              const totalGB = (captured.remaining || 0) + (captured.used || 0);
+              if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
+                console.log('  ✓ [VIGILANCE] Line 094 confirmed: rem=' + captured.remaining + ' bal=' + captured.balance);
+                return captured;
+              }
+            }
+          }
+        }
+        throw new Error('Line 094 data not confirmed after 30s');
+      }
+
+      // ── Helper: write to Firestore (Dokki only) ──
+      async function vigilanceFirestore(vData) {
+        const vNow = new Date().toISOString();
+        const vFields = {
+          'dokki': { mapValue: { fields: {
+            quota:     { doubleValue: vData.remaining },
+            maxQuota:  { doubleValue: vData.remaining + vData.used },
+            balance:   { doubleValue: vData.balance },
+            used:      { doubleValue: vData.used },
+            plan:      { stringValue: vData.plan },
+            updatedAt: { stringValue: vNow },
+            updatedBy: { stringValue: 'GitHub Cloud ⚡ Dokki [VIGILANCE]' },
+            status:    { stringValue: 'success' }
+          }}},
+          lastUpdate: { stringValue: vNow }
+        };
+        const mask = 'updateMask.fieldPaths=dokki&updateMask.fieldPaths=lastUpdate';
+        const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_latest/current?key=${FIREBASE_API_KEY}&${mask}`;
+        const res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: vFields }) });
+        if (!res.ok) throw new Error('Firestore HTTP ' + res.status);
+        const vHistory = {
+          timestamp: { stringValue: vNow },
+          user: { stringValue: 'GitHub Cloud ⚡ Dokki [VIGILANCE]' },
+          notes: { stringValue: 'vigilance-mode' },
+          dokki: { mapValue: { fields: { quota: { doubleValue: vData.remaining }, balance: { doubleValue: vData.balance } } } },
+          '104': { mapValue: { fields: { quota: { nullValue: null }, balance: { nullValue: null } } } },
+          gezira: { mapValue: { fields: { quota: { nullValue: null }, balance: { nullValue: null } } } }
+        };
+        const hUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_history?key=${FIREBASE_API_KEY}`;
+        await fetch(hUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: vHistory }) });
+      }
+
+      // ── Helper: send Vigilance Telegram (Dokki only) ──
+      async function vigilanceTelegram(vData, vRound, elapsed) {
+        try {
+          const rem = vData.remaining;
+          const elapsedMin = Math.floor(elapsed / 60000);
+          const burned = lastRemaining - rem;
+          const burnRate = burned > 0 ? (burned / (elapsedMin / 60)).toFixed(2) : '0.00';
+          const hoursLeft = parseFloat(burnRate) > 0 ? (rem / parseFloat(burnRate)).toFixed(1) : '∞';
+          const date = new Date().toLocaleString('en-GB', {
+            timeZone: 'Africa/Cairo', day: '2-digit', month: 'short',
+            year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+          const icon = rem <= 2 ? '🚨' : rem <= 10 ? '🔴' : rem <= 20 ? '🟠' : '🟡';
+          const urgency = rem <= 2  ? '🚨 *STOP — 2 GB REACHED! Recharge NOW!*' :
+                          rem <= 5  ? '🔴 *CRITICAL — Under 5 GB!*' :
+                          rem <= 10 ? '🔴 *CRITICAL — Under 10 GB! Recharge soon!*' :
+                          rem <= 20 ? '🟠 *WARNING — Under 20 GB*' :
+                          rem <= 30 ? '🟡 *NOTICE — Under 30 GB*' : '';
+          const msg = [
+            '⚡ *Cairo Taj — Dokki [VIGILANCE MODE]*',
+            '',
+            icon + ' Quota: *' + rem.toFixed(2) + ' GB* remaining',
+            '📉 Used: *' + vData.used.toFixed(2) + ' GB*',
+            '💰 Balance: *' + vData.balance.toFixed(2) + ' EGP*',
+            '🔥 Burn rate: ~' + burnRate + ' GB/h',
+            '⏱ Est. time left: ~' + hoursLeft + 'h',
+            '🔄 Vigilance round: #' + vRound + ' (' + elapsedMin + 'min in)',
+            '🕐 ' + date,
+            urgency
+          ].filter(Boolean).join('\n');
+          const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+          const recipients = [TELEGRAM_CHAT_ID];
+          if (TELEGRAM_GROUP_ID) recipients.push(TELEGRAM_GROUP_ID);
+          for (const chatId of recipients) {
+            if (!chatId) continue;
+            await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' }) });
+          }
+          if (rem <= 10) {
+            const critMsg = {
+              text: ['🚨🚨🚨 *VIGILANCE CRITICAL* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Dokki*',
+                '📉 Only *' + rem.toFixed(2) + ' GB* remaining!',
+                '🔴 *ACTION REQUIRED: Recharge immediately!*', '', '🕐 ' + date].join('\n'),
+              parse_mode: 'Markdown', disable_notification: false
+            };
+            for (const chatId of recipients) {
+              if (!chatId) continue;
+              await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ...critMsg, chat_id: chatId }) });
+            }
+          }
+          console.log('  ✓ Vigilance Telegram sent (round #' + vRound + ')');
+        } catch(e) { console.log('  ⚠ Vigilance Telegram failed (non-critical):', e.message); }
+      }
+
+      // ── Helper: full re-login + re-switch to 094 when session dies ──
+      async function vigilanceRestartSession() {
+        console.log('  [VIGILANCE] Session died — restarting fresh session...');
+        try { await browser.close(); } catch(e) {}
+        browser = await puppeteer.launch({
+          headless: true, executablePath: '/usr/bin/google-chrome-stable',
+          protocolTimeout: 60000,
+          args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+                 '--disable-blink-features=AutomationControlled',
+                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768'],
+          ignoreDefaultArgs: ['--enable-automation']
+        });
+        page = await browser.newPage();
+        await page.evaluateOnNewDocument(() => {
+          window.alert = () => {}; window.confirm = () => true; window.prompt = () => '';
+          Object.defineProperty(window, 'console', { writable: false, configurable: false });
+          Object.defineProperty(navigator, 'webdriver', { get: () => false });
+          window.navigator.chrome = { runtime: {} };
+          Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+          Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
+        });
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        await page.setViewport({ width: 1366, height: 768 });
+        page.on('dialog', async dialog => { await dialog.accept(); });
+        // Try saved cookies first
+        const sc = await loadSavedCookies();
+        if (sc && sc.length > 0) {
+          await page.setCookie(...sc);
+          await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 20000 });
+          await sleep(3000);
+          if (!page.url().includes('login')) {
+            console.log('  [VIGILANCE] Session restored from cookies ✓');
+            return;
+          }
+          await clearCookies();
+        }
+        // Full fresh login
+        await tryMethods([
+          async () => {
+            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
+          },
+          async () => {
+            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'domcontentloaded', timeout: 40000 });
+            await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 20000 });
+          }
+        ], 'VIGILANCE RE-NAVIGATE', 55000);
+        await sleep(randomDelay(3000, 5000));
+        await page.focus('#login_loginid_input_01').catch(() => {});
+        await sleep(2000);
+        await page.type('#login_loginid_input_01', WE_USERNAME, { delay: randomDelay(100, 180) });
+        await sleep(randomDelay(4000, 6000));
+        await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 12000 }).catch(() => {});
+        await sleep(500);
+        const dd = await page.$('.ant-select-selector, .ant-select');
+        if (dd) { await dd.click(); await sleep(1500); }
+        await page.evaluate(() => {
+          for (const el of document.querySelectorAll('.ant-select-item-option, li')) {
+            if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
+          }
+        });
+        await sleep(randomDelay(4000, 6000));
+        await page.focus('#login_password_input_01').catch(() => {});
+        await sleep(2000);
+        await page.type('#login_password_input_01', WE_PASSWORD, { delay: randomDelay(100, 180) });
+        await sleep(randomDelay(4000, 6000));
+        await page.evaluate(() => {
+          const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
+          if (btn) btn.click();
+        });
+        for (let t = 0; t < 20; t++) {
+          await sleep(1000);
+          if (!page.url().includes('login')) break;
+        }
+        if (page.url().includes('login')) throw new Error('Re-login failed after session death');
+        console.log('  [VIGILANCE] Fresh login successful ✓');
+        try {
+          const nc = await page.cookies();
+          const rel = nc.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
+          if (rel.length > 0) await saveCookies(rel);
+        } catch(e) {}
+      }
+
+      // ══ MAIN VIGILANCE LOOP (Dokki) ══
+      while (true) {
+        const elapsed = Date.now() - vigilanceStart;
+        if (elapsed >= VIGILANCE_MAX_MS) {
+          console.log('\n[VIGILANCE] 5h 45m safety cap reached — stopping vigilance mode.');
+          break;
+        }
+        console.log('\n[VIGILANCE] Waiting 13 minutes for next harvest...');
+        await sleep(VIGILANCE_INTERVAL_MS);
+
+        vigilanceRound++;
+        const elapsedMin = Math.floor((Date.now() - vigilanceStart) / 60000);
+        console.log('\n' + '═'.repeat(50));
+        console.log('⚡ VIGILANCE ROUND #' + vigilanceRound + ' — DOKKI (' + elapsedMin + 'min elapsed)');
+        console.log('═'.repeat(50));
+
+        try {
+          // Refresh page + re-switch to 094 (returns confirmed vData directly)
+          const vData = await vigilanceRefreshPage();
+          console.log('  Remaining: ' + vData.remaining + ' GB | Used: ' + vData.used + ' GB | Balance: ' + vData.balance + ' EGP');
+
+          await vigilanceFirestore(vData);
+          console.log('  ✓ Firestore + Ledger updated');
+
+          try {
+            const vNow = new Date().toISOString();
+            const isLowDokki = vData.remaining < 100;
+            const alertFields = {
+              dokki_low: { booleanValue: isLowDokki },
+              dokki_quota: { doubleValue: vData.remaining },
+              dokki_updatedAt: { stringValue: vNow }
+            };
+            const alertMask = 'updateMask.fieldPaths=dokki_low&updateMask.fieldPaths=dokki_quota&updateMask.fieldPaths=dokki_updatedAt';
+            const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
+            await fetch(alertUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: alertFields }) });
+          } catch(e) { console.log('  ⚠ Flag update failed (non-critical):', e.message); }
+
+          await vigilanceTelegram(vData, vigilanceRound, Date.now() - vigilanceStart);
+          lastRemaining = vData.remaining;
+
+          if (vData.remaining <= VIGILANCE_STOP_GB) {
+            console.log('\n🚨 [VIGILANCE] Quota reached ' + vData.remaining.toFixed(2) + ' GB — STOP THRESHOLD HIT.');
+            console.log('  Vigilance mode complete. Awaiting manual recharge.');
+            break;
+          }
+
+        } catch (vErr) {
+          console.log('  [VIGILANCE] Round #' + vigilanceRound + ' error: ' + vErr.message);
+          if (vErr.message.includes('SESSION_DIED') || vErr.message.includes('redirected to login') || vErr.message.includes('ALL METHODS FAILED')) {
+            console.log('  [VIGILANCE] Session dead — attempting restart...');
+            try {
+              await vigilanceRestartSession();
+              console.log('  [VIGILANCE] Session restarted. Will retry on next round.');
+            } catch (restartErr) {
+              console.log('  [VIGILANCE] Restart failed: ' + restartErr.message + ' — stopping vigilance.');
+              break;
+            }
+          } else {
+            console.log('  [VIGILANCE] Non-fatal error, continuing...');
+          }
+        }
+      }
+
+      console.log('\n[VIGILANCE] Exiting vigilance mode after ' + vigilanceRound + ' rounds (Dokki).');
+    } // end vigilance mode
+
   } catch (error) {
     console.error('\n❌ ERROR:', error.message);
     if (page) {
@@ -1419,12 +1760,12 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`\n${'═'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'═'.repeat(50)}\n`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
       await harvestQuota();
       console.log('\n🎉 COMPLETE!');
       process.exit(0);
     } catch (error) {
-      console.error(`\nAttempt ${attempt} failed: ${error.message}`);
+      console.error('\nAttempt ' + attempt + ' failed: ' + error.message);
       if (error.message && error.message.includes('WE_BLOCKED')) {
         console.error('⛔ WE block detected — stopping all retries to avoid extending the block');
         console.error('💀 Will retry on next scheduled run automatically');
@@ -1432,7 +1773,7 @@ async function main() {
       }
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
-        console.log(`Retrying in ${Math.floor(d/1000)}s...`);
+      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
         await sleep(d);
       } else {
         console.error('\n💀 ALL ATTEMPTS FAILED');
