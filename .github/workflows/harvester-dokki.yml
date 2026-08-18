@@ -23,16 +23,6 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Tor
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y tor
-          sudo bash -c 'echo "ControlPort 9051" >> /etc/tor/torrc'
-          sudo bash -c 'echo "CookieAuthentication 0" >> /etc/tor/torrc'
-          sudo service tor start
-          sleep 5
-          echo "Tor started and ready"
-
       - name: Cache npm
         uses: actions/cache@v4
         with:
