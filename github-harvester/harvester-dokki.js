@@ -1773,7 +1773,7 @@ async function main() {
       }
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+        console.log('Retrying in ' + Math.floor(d/1000) + 's...');
         await sleep(d);
       } else {
         console.error('\n💀 ALL ATTEMPTS FAILED');
