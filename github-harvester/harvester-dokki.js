@@ -38,12 +38,12 @@ async function withTimeout(promise, ms, name) {
 async function tryMethods(methods, stepName, timeout) {
   for (let i = 0; i < methods.length; i++) {
     try {
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+      console.log(`  [${i+1}/${methods.length}]`);
       const result = await withTimeout(methods[i](), timeout, `${stepName} M${i+1}`);
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+      console.log(`  ✓ Method ${i+1} SUCCESS`);
       return result;
     } catch (e) {
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+      console.log(`  ✗ Method ${i+1} FAILED: ${e.message}`);
       if (i === methods.length - 1) throw new Error(`${stepName} ALL METHODS FAILED`);
       await sleep(500);
     }
@@ -200,7 +200,7 @@ async function harvestQuota() {
         await sleep(15000);
         const count = await page.evaluate(() => document.querySelectorAll('input').length);
         if (count < 1) throw new Error(`Only ${count} inputs found`);
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+        console.log(`    no wait + 15s sleep, found ${count} inputs`);
       },
       // M5: domcontentloaded + very long sleep
       async () => {
@@ -232,7 +232,7 @@ async function harvestQuota() {
     console.log('  URL:', diag.url);
     console.log('  Inputs found:', diag.inputCount);
     console.log('  .ant-select:', diag.hasAntSelect, ' .ant-input:', diag.hasAntInput);
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+    diag.inputs.forEach(inp => console.log(`    [${inp.i}] id="${inp.id}" type="${inp.type}" placeholder="${inp.placeholder}" visible=${inp.visible}`));
     console.log('  --- END DIAGNOSTICS ---\n');
 
     // Human-like pause before typing
@@ -306,12 +306,12 @@ async function harvestQuota() {
           const info = await all[i].evaluate(el => ({
             type: el.type, visible: el.offsetParent !== null, id: el.id
           }));
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+          console.log(`    input[${i}] id="${info.id}" type="${info.type}" visible=${info.visible}`);
           if (info.type !== 'password' && info.type !== 'hidden' && info.visible) {
             await all[i].click(); await sleep(3000);
             await all[i].type(WE_USERNAME, { delay: randomDelay(100, 200) });
             await sleep(3000);
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+            console.log(`    used input[${i}]`);
             return;
           }
         }
@@ -364,35 +364,7 @@ async function harvestQuota() {
     // ======================================
     console.log('STEP 3: DROPDOWN');
     // ======================================
-    // Log dropdown state before attempting
-    const _ddDiag = await withTimeout(page.evaluate(() => ({
-      antSelect: !!document.querySelector('.ant-select'),
-      antSelectSelector: !!document.querySelector('.ant-select-selector'),
-      searchInput: !!document.querySelector('#login_input_type_01'),
-      anySelect: !!document.querySelector('[class*="select"]'),
-      selectText: document.querySelector('.ant-select-selector')?.innerText || document.querySelector('#login_input_type_01')?.value || null
-    })), 5000, 'dropdown diag').catch(() => null);
-    console.log('  Dropdown state:', JSON.stringify(_ddDiag));
-
     await tryMethods([
-      // M0: New search-input style (#login_input_type_01)
-      async () => {
-        const si = await page.$('#login_input_type_01');
-        if (!si) throw new Error('search input not found');
-        await si.click(); await sleep(500);
-        await si.evaluate(el => { el.value=''; el.dispatchEvent(new Event('input',{bubbles:true})); });
-        await si.type('Internet', { delay: 80 }); await sleep(1000);
-        const clicked = await page.evaluate(() => {
-          const opts = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li, [class*="option"]'));
-          const inet = opts.find(o => o.textContent?.toLowerCase().includes('internet'));
-          if (inet) { inet.click(); return inet.textContent.trim(); } return null;
-        });
-        if (!clicked) { await page.keyboard.press('ArrowDown'); await sleep(300); await page.keyboard.press('Enter'); }
-        else { console.log('    M0: search input + clicked:', clicked); }
-        await sleep(800);
-        const val = await page.evaluate(() => (document.querySelector('.ant-select-selector')?.innerText||'') + (document.querySelector('#login_input_type_01')?.value||''));
-        if (!val.toLowerCase().includes('internet')) throw new Error('Internet not confirmed: ' + val);
-      },
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
@@ -511,7 +483,7 @@ async function harvestQuota() {
             await all[i].click(); await sleep(3000);
             await all[i].type(WE_PASSWORD, { delay: randomDelay(100, 200) });
             await sleep(3000);
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+            console.log(`    loop found password at input[${i}]`);
             return;
           }
         }
@@ -1025,26 +997,6 @@ async function harvestQuota() {
         });
         if (!clicked) throw new Error('Option 0237600094 not found');
         console.log('    Clicked:', clicked);
-        // Wait 7s for page to settle + dismiss ad if present
-        console.log('    Waiting 7s for page to settle after line switch...');
-        await sleep(7000);
-        try {
-          await page.evaluate(() => {
-            const sels = ['button[class*="close"]','.ant-modal-close','.ant-modal-close-x','[style*="position: fixed"] button','[style*="position:fixed"] button'];
-            for (const sel of sels) {
-              for (const el of document.querySelectorAll(sel)) {
-                const r = el.getBoundingClientRect();
-                if (r.width > 0 && r.height > 0) {
-                  const t = el.textContent?.trim() || '';
-                  if (!/^(login|submit|confirm|ok)$/i.test(t)) el.click();
-                }
-              }
-            }
-            const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
-            if (bd) bd.click();
-          });
-          console.log('    Ad dismiss done');
-        } catch(e) { console.log('    Ad dismiss skipped:', e.message); }
 
         // Poll aggressively — capture data THE MOMENT the page shows 0237600094 AND full data loaded
         for (let w = 0; w < 30; w++) {
@@ -1760,12 +1712,12 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log('\n' + '='.repeat(50) + '\nATTEMPT ' + attempt + '/' + MAX_RETRIES + '\n' + '='.repeat(50) + '\n');
+      console.log(`\n${'═'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'═'.repeat(50)}\n`);
       await harvestQuota();
       console.log('\n🎉 COMPLETE!');
       process.exit(0);
     } catch (error) {
-      console.error('\nAttempt ' + attempt + ' failed: ' + error.message);
+      console.error(`\nAttempt ${attempt} failed: ${error.message}`);
       if (error.message && error.message.includes('WE_BLOCKED')) {
         console.error('⛔ WE block detected — stopping all retries to avoid extending the block');
         console.error('💀 Will retry on next scheduled run automatically');
@@ -1773,7 +1725,7 @@ async function main() {
       }
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
-        console.log('Retrying in ' + Math.floor(d/1000) + 's...');
+        console.log(`Retrying in ${Math.floor(d/1000)}s...`);
         await sleep(d);
       } else {
         console.error('\n💀 ALL ATTEMPTS FAILED');
