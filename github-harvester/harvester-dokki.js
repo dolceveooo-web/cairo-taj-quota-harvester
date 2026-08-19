@@ -1127,6 +1127,31 @@ async function harvestQuota() {
     console.log('  ✓ Switched to 0237600094 | captured data:', switcherCapturedData ? 'YES' : 'NO');
     console.log('  Current URL:', page.url(), '\n');
 
+    // Dismiss any advertisement that appears after line switch
+    console.log('  Checking for ads after line switch...');
+    await sleep(3000); // wait for ad to appear
+    try {
+      const dismissed = await page.evaluate(() => {
+        let count = 0;
+        const selectors = ['button[class*="close"]','.ant-modal-close','.ant-modal-close-x','[class*="modal"] button','[style*="position: fixed"] button','[style*="position:fixed"] button'];
+        for (const sel of selectors) {
+          for (const el of document.querySelectorAll(sel)) {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+              const t = el.textContent?.trim() || '';
+              if (!/^(login|submit|confirm)$/i.test(t)) { el.click(); count++; }
+            }
+          }
+        }
+        const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
+        if (bd && count === 0) { bd.click(); count++; }
+        return count;
+      });
+      if (dismissed > 0) { console.log('  Ad dismissed (' + dismissed + ' element(s))'); await sleep(1000); }
+      else { console.log('  No ad found, proceeding'); }
+    } catch(e) { console.log('  Ad check error (non-critical):', e.message); }
+
+
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
