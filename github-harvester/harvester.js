@@ -1558,7 +1558,7 @@ async function main() {
         process.exit(1);
       }
       if (attempt < MAX_RETRIES) {
-        const d = randomDelay(30000, 45000);
+        const d = randomDelay(90000, 120000);
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
         await sleep(d);
       } else {
