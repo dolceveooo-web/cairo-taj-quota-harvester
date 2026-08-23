@@ -100,7 +100,7 @@ async function harvestQuota() {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: '/usr/bin/google-chrome-stable',
+      executablePath: process.env.CHROME_PATH || (require('fs').existsSync('/opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome') ? '/opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome' : '/usr/bin/google-chrome-stable'),
       protocolTimeout: 60000,
       args: [
         '--no-sandbox',
@@ -1560,7 +1560,7 @@ async function harvestQuota() {
         console.log('  [VIGILANCE] Session died — restarting fresh session...');
         try { await browser.close(); } catch(e) {}
         browser = await puppeteer.launch({
-          headless: true, executablePath: '/usr/bin/google-chrome-stable',
+          headless: true, executablePath: process.env.CHROME_PATH || (require('fs').existsSync('/opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome') ? '/opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome' : '/usr/bin/google-chrome-stable'),
           protocolTimeout: 60000,
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
                  '--disable-blink-features=AutomationControlled',
