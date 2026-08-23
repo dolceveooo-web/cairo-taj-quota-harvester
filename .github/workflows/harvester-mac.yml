@@ -29,6 +29,9 @@ jobs:
           cd github-harvester
           npm install --no-audit
 
+      - name: Set Chrome path
+        run: echo "PUPPETEER_EXECUTABLE_PATH=$CHROME_PATH" >> $GITHUB_ENV
+
       - name: Run Line 104 harvester (macOS IP)
         env:
           FIREBASE_API_KEY:    ${{ secrets.FIREBASE_API_KEY }}

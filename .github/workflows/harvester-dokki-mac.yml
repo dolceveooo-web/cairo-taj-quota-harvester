@@ -29,14 +29,8 @@ jobs:
           cd github-harvester
           npm install --no-audit
 
-      - name: Find Chrome path
-        run: |
-          echo "CHROME_PATH=$CHROME_PATH"
-          which chromium || true
-          which chromium-browser || true
-          which google-chrome || true
-          ls /Applications/ | grep -i chrome || true
-          ls /opt/hostedtoolcache/setup-chrome/ 2>/dev/null || true
+      - name: Set Chrome path
+        run: echo "PUPPETEER_EXECUTABLE_PATH=$CHROME_PATH" >> $GITHUB_ENV
 
       - name: Run Dokki harvester (macOS IP)
         env:

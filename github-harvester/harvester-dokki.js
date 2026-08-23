@@ -100,7 +100,7 @@ async function harvestQuota() {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: (() => { const {execSync:es}=require('child_process'); const paths=[process.env.CHROME_PATH,'/opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium-browser','/usr/bin/chromium']; for(const p of paths){if(p){try{es('test -f '+JSON.stringify(p),{stdio:'ignore'});console.log('Chrome:',p);return p;}catch(e){}}} try{const w=es('which chromium',{stdio:'pipe'}).toString().trim();if(w){console.log('Chrome via which:',w);return w;}}catch(e){} return paths[0]; })(),
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
       protocolTimeout: 60000,
       args: [
         '--no-sandbox',
@@ -1560,7 +1560,7 @@ async function harvestQuota() {
         console.log('  [VIGILANCE] Session died — restarting fresh session...');
         try { await browser.close(); } catch(e) {}
         browser = await puppeteer.launch({
-          headless: true, executablePath: (() => { const {execSync:es}=require('child_process'); const paths=[process.env.CHROME_PATH,'/opt/hostedtoolcache/setup-chrome/chromium/stable/x64/chrome','/usr/bin/google-chrome-stable','/usr/bin/chromium-browser','/usr/bin/chromium']; for(const p of paths){if(p){try{es('test -f '+JSON.stringify(p),{stdio:'ignore'});console.log('Chrome:',p);return p;}catch(e){}}} try{const w=es('which chromium',{stdio:'pipe'}).toString().trim();if(w){console.log('Chrome via which:',w);return w;}}catch(e){} return paths[0]; })(),
+          headless: true, executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
           protocolTimeout: 60000,
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
                  '--disable-blink-features=AutomationControlled',
