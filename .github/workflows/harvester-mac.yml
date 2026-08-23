@@ -35,11 +35,7 @@ jobs:
           TELEGRAM_BOT_TOKEN:  ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
           TELEGRAM_GROUP_ID:   ${{ secrets.TELEGRAM_GROUP_ID }}
+          PUPPETEER_EXECUTABLE_PATH: /Users/runner/hostedtoolcache/setup-chrome/chromium/stable/arm64/Contents/MacOS/chrome
         run: |
           cd github-harvester
-          CHROME=$(find /Users/runner/hostedtoolcache/setup-chrome -name "chrome" -type f 2>/dev/null | head -1)
-          if [ -z "$CHROME" ]; then
-            CHROME=$(find /opt/hostedtoolcache/setup-chrome -name "chrome" -type f 2>/dev/null | head -1)
-          fi
-          echo "Using Chrome: $CHROME"
-          PUPPETEER_EXECUTABLE_PATH="$CHROME" node harvester.js
+          node harvester.js
