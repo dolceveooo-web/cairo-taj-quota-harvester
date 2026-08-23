@@ -1,10 +1,7 @@
 name: Cloud Quota Harvester - Dokki (macOS Test)
 
-# TEST: Using macOS runner - different IP range from Azure, WE may not block it
-# Run separately to compare success rate vs ubuntu runner
-
 on:
-  workflow_dispatch:  # Manual trigger only for now
+  workflow_dispatch:
 
 jobs:
   harvest:
@@ -29,12 +26,8 @@ jobs:
           cd github-harvester
           npm install --no-audit
 
-      - name: Set Chrome path
-        run: echo "PUPPETEER_EXECUTABLE_PATH=$CHROME_PATH" >> $GITHUB_ENV
-
       - name: Run Dokki harvester (macOS IP)
         env:
-          PUPPETEER_EXECUTABLE_PATH: ${{ env.CHROME_PATH }}
           FIREBASE_API_KEY:    ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           DOKKI_USERNAME:      ${{ secrets.DOKKI_USERNAME }}
@@ -44,4 +37,10 @@ jobs:
           TELEGRAM_GROUP_ID:   ${{ secrets.TELEGRAM_GROUP_ID }}
         run: |
           cd github-harvester
-          node harvester-dokki.js
+          # Find Chrome - setup-chrome puts it in hostedtoolcache
+          CHROME=$(find /Users/runner/hostedtoolcache/setup-chrome -name "chrome" -type f 2>/dev/null | head -1)
+          if [ -z "$CHROME" ]; then
+            CHROME=$(find /opt/hostedtoolcache/setup-chrome -name "chrome" -type f 2>/dev/null | head -1)
+          fi
+          echo "Using Chrome: $CHROME"
+          PUPPETEER_EXECUTABLE_PATH="$CHROME" node harvester-dokki.js
