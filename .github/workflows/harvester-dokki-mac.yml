@@ -34,6 +34,7 @@ jobs:
 
       - name: Run Dokki harvester (macOS IP)
         env:
+          PUPPETEER_EXECUTABLE_PATH: ${{ env.CHROME_PATH }}
           FIREBASE_API_KEY:    ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
           DOKKI_USERNAME:      ${{ secrets.DOKKI_USERNAME }}
