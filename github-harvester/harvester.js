@@ -104,7 +104,7 @@ async function harvestQuota() {
   try {
     browser = await puppeteer.launch({
       headless: true,
-      executablePath: '/usr/bin/google-chrome-stable',
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
       protocolTimeout: 60000,
       args: [
         '--no-sandbox',
@@ -1358,11 +1358,11 @@ async function harvestQuota() {
         try { await browser.close(); } catch(e) {}
         // Re-launch browser
         browser = await puppeteer.launch({
-          headless: true, executablePath: '/usr/bin/google-chrome-stable',
+          headless: true, executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
           protocolTimeout: 60000,
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
                  '--disable-blink-features=AutomationControlled',
-                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768'],
+                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768','--disable-gpu','--remote-debugging-port=0'],
           ignoreDefaultArgs: ['--enable-automation']
         });
         page = await browser.newPage();
