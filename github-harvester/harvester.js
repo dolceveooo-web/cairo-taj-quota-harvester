@@ -1362,7 +1362,7 @@ async function harvestQuota() {
           protocolTimeout: 60000,
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
                  '--disable-blink-features=AutomationControlled',
-                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768','--disable-gpu','--remote-debugging-port=0'],
+                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768','--disable-gpu'],
           ignoreDefaultArgs: ['--enable-automation']
         });
         page = await browser.newPage();
