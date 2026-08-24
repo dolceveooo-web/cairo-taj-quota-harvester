@@ -703,7 +703,7 @@ async function harvestQuota() {
           });
           for (const img of imgs) {
             const r = img.getBoundingClientRect();
-            if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
+            if (r.width > 80 && r.height > 25) return img; // naturalWidth removed - always 0 on datacenter IPs
           }
           return null;
         });
@@ -879,7 +879,7 @@ async function harvestQuota() {
         try {
           // Wait for valid captcha image (up to 8s)
           let imgHandle = null;
-          for (let retry = 0; retry < 8; retry++) {
+          for (let retry = 0; retry < 12; retry++) {
             imgHandle = await findCaptchaImg();
             const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
             if (isValid) break;
