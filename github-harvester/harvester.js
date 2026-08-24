@@ -50,9 +50,42 @@ async function tryMethods(methods, stepName, timeout) {
   }
 }
 
+
+// Tor IP rotation helpers
+const { execSync: _torExec } = require('child_process');
+const _net = require('net');
+let _torActive = false;
+
+async function _ensureTor() {
+  try { _torExec('pgrep -x tor', { stdio: 'ignore' }); console.log('  [TOR] Already running'); }
+  catch(e) {
+    console.log('  [TOR] Starting Tor...');
+    try { _torExec('sudo service tor start', { stdio: 'inherit', timeout: 15000 }); await new Promise(r=>setTimeout(r,4000)); }
+    catch(e2) { console.log('  [TOR] start failed:', e2.message); }
+  }
+  for (let i = 0; i < 10; i++) {
+    try {
+      await new Promise((res,rej) => {
+        const s = _net.createConnection({port:9050,host:'127.0.0.1'}, () => { s.destroy(); res(); });
+        s.on('error', rej); setTimeout(()=>{s.destroy();rej(new Error('timeout'));},2000);
+      });
+      console.log('  [TOR] SOCKS5 ready'); return true;
+    } catch(e) { await new Promise(r=>setTimeout(r,1000)); }
+  }
+  console.log('  [TOR] Port not ready'); return false;
+}
+
+async function _rotateTorCircuit() {
+  try { _torExec('sudo kill -HUP $(pgrep -x tor) 2>/dev/null || true', {stdio:'ignore',timeout:5000}); }
+  catch(e) {}
+  await new Promise(r=>setTimeout(r,4000));
+  console.log('  [TOR] New circuit ready');
+}
+
 async function harvestQuota() {
   console.log('🚀 STARTING...\n');
   let browser, page;
+  let _torRetryCount = 0;
 
   // ── Session Cookie Helpers ─────────────────────────────────────────────────
   // Save/load cookies via Firestore so we can skip login when session is still valid
@@ -543,7 +576,7 @@ async function harvestQuota() {
     // ======================================
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown';
-    for (let tick = 0; tick < 20; tick++) {
+    for (let tick = 0; tick < 30; tick++) {
       const currentUrl = page.url();
       if (!currentUrl.includes('login')) {
         postLoginState = 'navigated';
@@ -578,14 +611,78 @@ async function harvestQuota() {
       await sleep(1000);
     }
 
-    // Handle blocked state — clear cookies and exit cleanly (don't retry)
-    if (postLoginState === 'blocked') {
-      await clearCookies(); // Clear any saved session
-      throw new Error('WE_BLOCKED: Account/IP temporarily blocked. Will auto-retry on next scheduled run (2h).');
-    }
-
-    if (postLoginState === 'unknown') {
-      throw new Error('Still on login page - no navigation or captcha after 20s');
+    if (postLoginState === 'blocked' || postLoginState === 'unknown') {
+      await clearCookies();
+      if (_torRetryCount < 2) {
+        _torRetryCount++;
+        console.log('  [TOR] Login blocked/silent - switching to Tor (retry ' + _torRetryCount + '/2)...');
+        const torReady = await _ensureTor();
+        if (torReady) {
+          await _rotateTorCircuit();
+          if (browser) { try { await browser.close(); } catch(e) {} browser = null; }
+          _torActive = true;
+          console.log('  [TOR] Relaunching browser through Tor SOCKS5...');
+          browser = await puppeteer.launch({
+            headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || '/usr/bin/google-chrome-stable',
+            protocolTimeout: 60000,
+            args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
+                   '--disable-blink-features=AutomationControlled',
+                   '--disable-features=IsolateOrigins,site-per-process',
+                   '--window-size=1366,768','--proxy-server=socks5://127.0.0.1:9050'],
+            ignoreDefaultArgs: ['--enable-automation']
+          });
+          page = await browser.newPage();
+          await page.evaluateOnNewDocument(() => {
+            window.alert = () => {}; window.confirm = () => true; window.prompt = () => '';
+            Object.defineProperty(navigator, 'webdriver', { get: () => false });
+            window.navigator.chrome = { runtime: {} };
+            Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+            Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
+          });
+          await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+          await page.setViewport({ width: 1366, height: 768 });
+          page.on('dialog', async d => { console.log('  Dialog dismissed:', d.message().slice(0,80)); await d.accept(); });
+          // Re-run login steps through Tor
+          await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+          await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
+          // Fill credentials
+          try { await page.focus('#login_loginid_input_01'); await page.type('#login_loginid_input_01', WE_USERNAME, {delay:120}); } catch(e) {}
+          await new Promise(r=>setTimeout(r,2000));
+          try {
+            const si = await page.$('#login_input_type_01');
+            if (si) { await si.click(); await new Promise(r=>setTimeout(r,500)); await si.type('Internet', {delay:80}); await new Promise(r=>setTimeout(r,800));
+              await page.evaluate(() => { const opts=Array.from(document.querySelectorAll('.ant-select-item-option,.ant-select-item,li')); const inet=opts.find(o=>o.textContent&&o.textContent.toLowerCase().includes('internet')); if(inet)inet.click(); });
+            } else {
+              const dd = await page.$('.ant-select-selector,.ant-select'); if(dd){await dd.click(); await new Promise(r=>setTimeout(r,1500));}
+              await page.evaluate(() => { const items=Array.from(document.querySelectorAll('.ant-select-item-option,.ant-select-item,li')); const inet=items.find(i=>i.textContent.toLowerCase().includes('internet')); if(inet)inet.click(); });
+            }
+          } catch(e) { console.log('  [TOR] Dropdown skip:', e.message); }
+          await new Promise(r=>setTimeout(r,2000));
+          try { await page.focus('#login_password_input_01'); await page.type('#login_password_input_01', WE_PASSWORD, {delay:120}); } catch(e) {}
+          await new Promise(r=>setTimeout(r,3000));
+          await page.evaluate(() => { const btns=Array.from(document.querySelectorAll('button')); const btn=btns.find(b=>b.textContent.toLowerCase().includes('login')||b.className.includes('primary')); if(btn)btn.click(); });
+          // Wait for result
+          for (let tick = 0; tick < 30; tick++) {
+            await new Promise(r=>setTimeout(r,1000));
+            const url = page.url();
+            if (!url.includes('login')) { postLoginState = 'navigated'; console.log('  [TOR] Login SUCCESS!'); break; }
+            const ps = await page.evaluate(() => {
+              const modal = document.querySelector('.ant-modal-content,.ant-modal,[class*="modal"]');
+              return { hasCaptcha: !!modal };
+            }).catch(()=>({hasCaptcha:false}));
+            if (ps.hasCaptcha) { postLoginState = 'captcha'; break; }
+          }
+          if (postLoginState !== 'navigated' && postLoginState !== 'captcha') {
+            throw new Error('WE_BLOCKED: IP blocked even through Tor. Will retry next run.');
+          }
+        } else {
+          throw new Error('Still on login page - Tor unavailable, no navigation after 30s');
+        }
+      } else {
+        if (postLoginState === 'blocked') throw new Error('WE_BLOCKED: Account/IP blocked. Retry next run.');
+        throw new Error('Still on login page - no navigation or captcha after 30s');
+      }
     }
 
     // ======================================
@@ -800,7 +897,7 @@ async function harvestQuota() {
             const b64 = await canvasProcess(imgHandle, filter);
             if (!b64) continue;
             const texts = await ocrRead(b64);
-            const match = texts.find(t => t.length === 5);
+            const match = texts.find(t => t.length >= 4 && t.length <= 6);
             console.log('    [' + filter + '] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
             if (match) { bestAnswer = match; break; }
           }
