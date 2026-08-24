@@ -709,43 +709,40 @@ async function harvestQuota() {
         });
       }
 
-      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
+      // HELPER: Canvas preprocessing - 10 extreme filters for WE captcha
+      // WE captcha: mixed case+digits, dot noise bg, blue diagonal line
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
           const scale = 3;
           const c = document.createElement('canvas');
-          c.width = imgEl.naturalWidth * scale;
-          c.height = imgEl.naturalHeight * scale;
-          const ctx = c.getContext('2d');
-          ctx.imageSmoothingEnabled = false;
+          c.width = imgEl.naturalWidth * scale; c.height = imgEl.naturalHeight * scale;
+          const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false;
           ctx.drawImage(imgEl, 0, 0, c.width, c.height);
-          const data = ctx.getImageData(0, 0, c.width, c.height);
-          const d = data.data;
+          const data = ctx.getImageData(0, 0, c.width, c.height); const d = data.data;
           for (let i = 0; i < d.length; i += 4) {
-            const r = d[i], g = d[i+1], b = d[i+2];
-            let keep = false;
-            if (f === 'red') {
-              // Red isolation: keep reddish pixels, kill blue line + gray bg
-              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
-            } else if (f === 'dark') {
-              // Dark text: keep anything with low luminance
-              const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = lum < 140;
-            } else {
-              // Saturated: keep colored pixels, remove gray/white
-              const max = Math.max(r,g,b), min = Math.min(r,g,b);
-              const sat = max === 0 ? 0 : (max - min) / max;
-              keep = sat > 0.3 && r > g;
-            }
-            d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
+            const r=d[i],g=d[i+1],b=d[i+2];
+            const lum=0.299*r+0.587*g+0.114*b;
+            const sat=Math.max(r,g,b)===0?0:(Math.max(r,g,b)-Math.min(r,g,b))/Math.max(r,g,b);
+            let keep=false;
+            if      (f==='dark')      keep=lum<128;
+            else if (f==='dark2')     keep=lum<150;
+            else if (f==='dark3')     keep=lum<170;
+            else if (f==='nodots')    keep=lum<115&&sat<0.5;
+            else if (f==='noline')    keep=lum<128&&!(b>r+30&&b>g+20);
+            else if (f==='nolineAgg') keep=lum<140&&!(b>r+15&&b>g+10);
+            else if (f==='red')       keep=r>90&&(r-g)>25&&(r-b)>15;
+            else if (f==='color')     keep=sat>0.2&&lum<210;
+            else if (f==='t110')      keep=lum<110;
+            else if (f==='inv')       keep=(255-lum)<128;
+            d[i]=d[i+1]=d[i+2]=keep?0:255; d[i+3]=255;
           }
-          ctx.putImageData(data, 0, 0);
+          ctx.putImageData(data,0,0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with dual PSM modes
+            // HELPER: OCR with dual PSM modes
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
@@ -839,7 +836,7 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (6 rounds — enough to solve, avoids IP block from too many attempts)
-      const FILTERS = ['red', 'dark', 'contrast'];
+      const FILTERS = ['dark','dark2','dark3','nodots','noline','nolineAgg','red','color','t110','inv'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 6 && !captchaSolved; round++) {
