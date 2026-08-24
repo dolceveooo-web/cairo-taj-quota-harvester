@@ -598,55 +598,65 @@ async function harvestQuota() {
           });
           for (const img of imgs) {
             const r = img.getBoundingClientRect();
-            if (r.width > 80 && r.height > 25) return img; // naturalWidth removed - always 0 on datacenter IPs
+            if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
           }
           return null;
         });
       }
 
-      // HELPER: Canvas - 10 extreme filters for WE captcha
+      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
           const scale = 3;
           const c = document.createElement('canvas');
-          c.width = imgEl.naturalWidth * scale; c.height = imgEl.naturalHeight * scale;
-          const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false;
+          c.width = imgEl.naturalWidth * scale;
+          c.height = imgEl.naturalHeight * scale;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
           ctx.drawImage(imgEl, 0, 0, c.width, c.height);
-          const data = ctx.getImageData(0, 0, c.width, c.height); const d = data.data;
+          const data = ctx.getImageData(0, 0, c.width, c.height);
+          const d = data.data;
           for (let i = 0; i < d.length; i += 4) {
-            const r=d[i],g=d[i+1],b=d[i+2];
-            const lum=0.299*r+0.587*g+0.114*b;
-            const sat=Math.max(r,g,b)===0?0:(Math.max(r,g,b)-Math.min(r,g,b))/Math.max(r,g,b);
-            let keep=false;
-            if(f==='dark')       keep=lum<128;
-            else if(f==='dark2') keep=lum<150;
-            else if(f==='dark3') keep=lum<170;
-            else if(f==='nodots')keep=lum<115&&sat<0.5;
-            else if(f==='noline')keep=lum<128&&!(b>r+30&&b>g+20);
-            else if(f==='nolineAgg')keep=lum<140&&!(b>r+15&&b>g+10);
-            else if(f==='red')   keep=r>90&&(r-g)>25&&(r-b)>15;
-            else if(f==='color') keep=sat>0.2&&lum<210;
-            else if(f==='t110')  keep=lum<110;
-            else if(f==='inv')   keep=(255-lum)<128;
-            d[i]=d[i+1]=d[i+2]=keep?0:255;d[i+3]=255;
+            const r = d[i], g = d[i+1], b = d[i+2];
+            let keep = false;
+            if (f === 'red') {
+              // Red isolation: keep reddish pixels, kill blue line + gray bg
+              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
+            } else if (f === 'dark') {
+              // Dark text: keep anything with low luminance
+              const lum = 0.299*r + 0.587*g + 0.114*b;
+              keep = lum < 140;
+            } else {
+              // Saturated: keep colored pixels, remove gray/white
+              const max = Math.max(r,g,b), min = Math.min(r,g,b);
+              const sat = max === 0 ? 0 : (max - min) / max;
+              keep = sat > 0.3 && r > g;
+            }
+            d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
           }
-          ctx.putImageData(data,0,0);
+          ctx.putImageData(data, 0, 0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with 4 PSM modes
+      // HELPER: OCR with dual PSM modes
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
-        const results=[]; const seen=new Set();
-        const wl='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        for (const psm of ['8','7','13','6']) {
-          try {
-            const r=await Tesseract.recognize(imageData,'eng',{tessedit_char_whitelist:wl,tessedit_pageseg_mode:psm,preserve_interword_spaces:'0'});
-            const t=r.data.text.replace(/[^A-Za-z0-9]/g,"").trim();
-            if(t&&!seen.has(t)){seen.add(t);results.push(t);}
-          }catch(e){}
+        const results = [];
+        const r1 = await Tesseract.recognize(imageData, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+          tessedit_pageseg_mode: '8'
+        });
+        const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+        if (t1) results.push(t1);
+        if (t1.length !== 5) {
+          const r2 = await Tesseract.recognize(imageData, 'eng', {
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+            tessedit_pageseg_mode: '7'
+          });
+          const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+          if (t2 && t2 !== t1) results.push(t2);
         }
         return results;
       }
@@ -724,7 +734,7 @@ async function harvestQuota() {
       }
 
       // MAIN CAPTCHA LOOP (6 rounds — enough to solve, avoids IP block from too many attempts)
-      const FILTERS = ['dark','dark2','dark3','nodots','noline','nolineAgg','red','color','t110','inv'];
+      const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 6 && !captchaSolved; round++) {
@@ -1126,31 +1136,6 @@ async function harvestQuota() {
 
     console.log('  ✓ Switched to 0237600094 | captured data:', switcherCapturedData ? 'YES' : 'NO');
     console.log('  Current URL:', page.url(), '\n');
-
-    // Dismiss any advertisement that appears after line switch
-    console.log('  Checking for ads after line switch...');
-    await sleep(3000); // wait for ad to appear
-    try {
-      const dismissed = await page.evaluate(() => {
-        let count = 0;
-        const selectors = ['button[class*="close"]','.ant-modal-close','.ant-modal-close-x','[class*="modal"] button','[style*="position: fixed"] button','[style*="position:fixed"] button'];
-        for (const sel of selectors) {
-          for (const el of document.querySelectorAll(sel)) {
-            const r = el.getBoundingClientRect();
-            if (r.width > 0 && r.height > 0) {
-              const t = el.textContent?.trim() || '';
-              if (!/^(login|submit|confirm)$/i.test(t)) { el.click(); count++; }
-            }
-          }
-        }
-        const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
-        if (bd && count === 0) { bd.click(); count++; }
-        return count;
-      });
-      if (dismissed > 0) { console.log('  Ad dismissed (' + dismissed + ' element(s))'); await sleep(1000); }
-      else { console.log('  No ad found, proceeding'); }
-    } catch(e) { console.log('  Ad check error (non-critical):', e.message); }
-
 
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
@@ -1564,7 +1549,7 @@ async function harvestQuota() {
           protocolTimeout: 60000,
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
                  '--disable-blink-features=AutomationControlled',
-                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768','--disable-gpu'],
+                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768'],
           ignoreDefaultArgs: ['--enable-automation']
         });
         page = await browser.newPage();
@@ -1739,7 +1724,7 @@ async function main() {
         process.exit(1);
       }
       if (attempt < MAX_RETRIES) {
-        const d = randomDelay(90000, 120000); // longer wait - WE rate limits per IP
+        const d = randomDelay(30000, 45000);
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
         await sleep(d);
       } else {

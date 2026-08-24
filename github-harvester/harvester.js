@@ -40,10 +40,10 @@ async function tryMethods(methods, stepName, timeout) {
     try {
       console.log(`  [${i+1}/${methods.length}]`);
       const result = await withTimeout(methods[i](), timeout, `${stepName} M${i+1}`);
-      console.log(`  âœ“ Method ${i+1} SUCCESS`);
+      console.log(`  ✓ Method ${i+1} SUCCESS`);
       return result;
     } catch (e) {
-      console.log(`  âœ— Method ${i+1} FAILED: ${e.message}`);
+      console.log(`  ✗ Method ${i+1} FAILED: ${e.message}`);
       if (i === methods.length - 1) throw new Error(`${stepName} ALL METHODS FAILED`);
       await sleep(500);
     }
@@ -51,10 +51,10 @@ async function tryMethods(methods, stepName, timeout) {
 }
 
 async function harvestQuota() {
-  console.log('ًںڑ€ STARTING...\n');
+  console.log('🚀 STARTING...\n');
   let browser, page;
 
-  // â”€â”€ Session Cookie Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Session Cookie Helpers ─────────────────────────────────────────────────
   // Save/load cookies via Firestore so we can skip login when session is still valid
   // Cookies stored in quota_settings/session_104 as a JSON string
   async function loadSavedCookies() {
@@ -86,7 +86,7 @@ async function harvestQuota() {
           line:     { stringValue: '104' }
         }})
       });
-      console.log('  [SESSION] Cookies saved to Firestore âœ“');
+      console.log('  [SESSION] Cookies saved to Firestore ✓');
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
   }
 
@@ -99,7 +99,7 @@ async function harvestQuota() {
       console.log('  [SESSION] Cookies cleared from Firestore');
     } catch(e) {}
   }
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ──────────────────────────────────────────────────────────────────────────
 
   try {
     browser = await puppeteer.launch({
@@ -146,9 +146,9 @@ async function harvestQuota() {
       await dialog.accept();
     });
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     // STEP 0: TRY SAVED SESSION COOKIES
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 0: SESSION CHECK');
     let sessionValid = false;
     const savedCookies = await loadSavedCookies();
@@ -162,22 +162,22 @@ async function harvestQuota() {
         const isLoggedIn = !url.includes('login') && url.includes('account');
         if (isLoggedIn) {
           sessionValid = true;
-          console.log('  âœ“ Session still valid! Skipping login entirely.\n');
+          console.log('  ✓ Session still valid! Skipping login entirely.\n');
         } else {
-          console.log('  âœ— Session expired, clearing and doing fresh login');
+          console.log('  ✗ Session expired, clearing and doing fresh login');
           await clearCookies();
         }
       } catch(e) {
-        console.log('  âœ— Session check failed:', e.message);
+        console.log('  ✗ Session check failed:', e.message);
         await clearCookies();
       }
     } else {
       console.log('  No saved session, will do fresh login\n');
     }
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 1: NAVIGATE');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     if (!sessionValid) {
     await tryMethods([
       // M1: EXACT same as working local harvester
@@ -558,8 +558,8 @@ async function harvestQuota() {
         // Detect WE block messages
         const isBlocked = text.includes('maximum') || text.includes('too many') ||
                           text.includes('exceeded') || text.includes('try again') ||
-                          text.includes('blocked') || text.includes('ظ…ط­ط§ظˆظ„ط§طھ') ||
-                          text.includes('ط§ظ„ط­ط¯ ط§ظ„ط§ظ‚طµظ‰') || text.includes('ظ…ط±ظ‡ ط§ط®ط±ظ‰');
+                          text.includes('blocked') || text.includes('محاولات') ||
+                          text.includes('الحد الاقصى') || text.includes('مره اخرى');
         return { hasCaptcha, isBlocked, text: text.slice(0, 200) };
       });
 
@@ -578,7 +578,7 @@ async function harvestQuota() {
       await sleep(1000);
     }
 
-    // Handle blocked state â€” clear cookies and exit cleanly (don't retry)
+    // Handle blocked state — clear cookies and exit cleanly (don't retry)
     if (postLoginState === 'blocked') {
       await clearCookies(); // Clear any saved session
       throw new Error('WE_BLOCKED: Account/IP temporarily blocked. Will auto-retry on next scheduled run (2h).');
@@ -606,55 +606,65 @@ async function harvestQuota() {
           });
           for (const img of imgs) {
             const r = img.getBoundingClientRect();
-            if (r.width > 80 && r.height > 25) return img; // naturalWidth check removed - blocked on datacenter IPs
+            if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
           }
           return null;
         });
       }
 
-      // HELPER: Canvas - 10 extreme filters for WE captcha (dot noise + blue diagonal line)
+      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
           const scale = 3;
           const c = document.createElement('canvas');
-          c.width = imgEl.naturalWidth * scale; c.height = imgEl.naturalHeight * scale;
-          const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false;
+          c.width = imgEl.naturalWidth * scale;
+          c.height = imgEl.naturalHeight * scale;
+          const ctx = c.getContext('2d');
+          ctx.imageSmoothingEnabled = false;
           ctx.drawImage(imgEl, 0, 0, c.width, c.height);
-          const data = ctx.getImageData(0, 0, c.width, c.height); const d = data.data;
+          const data = ctx.getImageData(0, 0, c.width, c.height);
+          const d = data.data;
           for (let i = 0; i < d.length; i += 4) {
-            const r=d[i],g=d[i+1],b=d[i+2];
-            const lum=0.299*r+0.587*g+0.114*b;
-            const sat=Math.max(r,g,b)===0?0:(Math.max(r,g,b)-Math.min(r,g,b))/Math.max(r,g,b);
-            let keep=false;
-            if      (f==='dark')      keep=lum<128;
-            else if (f==='dark2')     keep=lum<150;
-            else if (f==='dark3')     keep=lum<170;
-            else if (f==='nodots')    keep=lum<115&&sat<0.5;
-            else if (f==='noline')    keep=lum<128&&!(b>r+30&&b>g+20);
-            else if (f==='nolineAgg') keep=lum<140&&!(b>r+15&&b>g+10);
-            else if (f==='red')       keep=r>90&&(r-g)>25&&(r-b)>15;
-            else if (f==='color')     keep=sat>0.2&&lum<210;
-            else if (f==='t110')      keep=lum<110;
-            else if (f==='inv')       keep=(255-lum)<128;
-            d[i]=d[i+1]=d[i+2]=keep?0:255; d[i+3]=255;
+            const r = d[i], g = d[i+1], b = d[i+2];
+            let keep = false;
+            if (f === 'red') {
+              // Red isolation: keep reddish pixels, kill blue line + gray bg
+              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
+            } else if (f === 'dark') {
+              // Dark text: keep anything with low luminance
+              const lum = 0.299*r + 0.587*g + 0.114*b;
+              keep = lum < 140;
+            } else {
+              // Saturated: keep colored pixels, remove gray/white
+              const max = Math.max(r,g,b), min = Math.min(r,g,b);
+              const sat = max === 0 ? 0 : (max - min) / max;
+              keep = sat > 0.3 && r > g;
+            }
+            d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
           }
-          ctx.putImageData(data,0,0);
+          ctx.putImageData(data, 0, 0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with 4 PSM modes
+      // HELPER: OCR with dual PSM modes
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
-        const results=[]; const seen=new Set();
-        const wl='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-        for (const psm of ['8','7','13','6']) {
-          try {
-            const r=await Tesseract.recognize(imageData,'eng',{tessedit_char_whitelist:wl,tessedit_pageseg_mode:psm,preserve_interword_spaces:'0'});
-            const t=r.data.text.replace(/[^A-Za-z0-9]/g,"").trim();
-            if(t&&!seen.has(t)){seen.add(t);results.push(t);}
-          }catch(e){}
+        const results = [];
+        const r1 = await Tesseract.recognize(imageData, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+          tessedit_pageseg_mode: '8'
+        });
+        const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+        if (t1) results.push(t1);
+        if (t1.length !== 5) {
+          const r2 = await Tesseract.recognize(imageData, 'eng', {
+            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+            tessedit_pageseg_mode: '7'
+          });
+          const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+          if (t2 && t2 !== t1) results.push(t2);
         }
         return results;
       }
@@ -675,7 +685,7 @@ async function harvestQuota() {
           setter.call(inp, ans);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-          // Find the OK/confirm button â€” NOT Cancel. Look for button with ok/confirm text,
+          // Find the OK/confirm button — NOT Cancel. Look for button with ok/confirm text,
           // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
           const allBtns = Array.from(modal.querySelectorAll('button'));
           const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
@@ -731,8 +741,8 @@ async function harvestQuota() {
         return false;
       }
 
-      // MAIN CAPTCHA LOOP (6 rounds â€” enough to solve, avoids IP block from too many attempts)
-      const FILTERS = ['dark','dark2','dark3','nodots','noline','nolineAgg','red','color','t110','inv'];
+      // MAIN CAPTCHA LOOP (6 rounds — enough to solve, avoids IP block from too many attempts)
+      const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 6 && !captchaSolved; round++) {
@@ -799,7 +809,7 @@ async function harvestQuota() {
             console.log('    ! No 5-char result from any filter');
             continue;
           }
-          // One attempt per round â€” cycle through case variants across rounds
+          // One attempt per round — cycle through case variants across rounds
           const variantIndex = (round - 1) % 3;
           const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
           console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
@@ -825,10 +835,10 @@ async function harvestQuota() {
       }
     }
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 2: SERVICE NUMBER (USERNAME)');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
-    console.log('  âœ“ Login successful!\n');
+    // ══════════════════════════════════════
+    console.log('  ✓ Login successful!\n');
 
     // Save session cookies for next run (avoids login entirely if session still valid)
     try {
@@ -841,9 +851,9 @@ async function harvestQuota() {
 
     } // end if (!sessionValid)
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     const data = await tryMethods([
       // M1: Walk ALL spans/divs, find ones whose text is ONLY a decimal number,
       // then check if a nearby sibling contains "Remaining" or "Used"
@@ -873,7 +883,7 @@ async function harvestQuota() {
             const t = spans[i].innerText?.trim();
             if (!t || t.length > 100) continue;
 
-            // Find "Remaining" label â€” check i-1, i-2 for the number
+            // Find "Remaining" label — check i-1, i-2 for the number
             if (t === 'Remaining') {
               for (let back = 1; back <= 3; back++) {
                 if (i - back >= 0) {
@@ -883,7 +893,7 @@ async function harvestQuota() {
               }
             }
 
-            // Find "Used" label â€” check i-1, i-2 for the number
+            // Find "Used" label — check i-1, i-2 for the number
             if (t === 'Used') {
               for (let back = 1; back <= 3; back++) {
                 if (i - back >= 0) {
@@ -979,9 +989,9 @@ async function harvestQuota() {
     console.log('  Balance:', data.balance, 'EGP');
     console.log('  Plan:', data.plan, '\n');
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 7: FIRESTORE');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     const now = new Date().toISOString();
     const fields = {
       '104': { mapValue: { fields: {
@@ -991,7 +1001,7 @@ async function harvestQuota() {
         used:     { doubleValue: data.used },
         plan:     { stringValue: data.plan },
         updatedAt: { stringValue: now },
-        updatedBy: { stringValue: 'GitHub Cloud âڑ،' },
+        updatedBy: { stringValue: 'GitHub Cloud ⚡' },
         status:   { stringValue: 'success' }
       }}},
       lastUpdate: { stringValue: now }
@@ -1021,14 +1031,14 @@ async function harvestQuota() {
       }
     ], 'FIRESTORE', 20000);
 
-    console.log('  âœ“ Uploaded to quota_latest!\n');
+    console.log('  ✓ Uploaded to quota_latest!\n');
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 8: LEDGER (quota_history)');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     const historyFields = {
       timestamp: { stringValue: now },
-      user: { stringValue: 'GitHub Cloud âڑ،' },
+      user: { stringValue: 'GitHub Cloud ⚡' },
       notes: { stringValue: '' },
       dokki: { mapValue: { fields: {
         quota: { nullValue: null },
@@ -1060,14 +1070,14 @@ async function harvestQuota() {
       }
     ], 'LEDGER', 20000);
 
-    console.log('  âœ“ Ledger updated!\n');
+    console.log('  ✓ Ledger updated!\n');
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     console.log('STEP 8.5: LOW QUOTA FLAG');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     // Write flag to Firestore quota_settings/alerts
-    // line104_low: true  â†’ hourly workflow will run full harvest
-    // line104_low: false â†’ hourly workflow will skip (normal 2h schedule handles it)
+    // line104_low: true  → hourly workflow will run full harvest
+    // line104_low: false → hourly workflow will skip (normal 2h schedule handles it)
     try {
       const isLow104 = data.remaining < 100;
       const alertFields = {
@@ -1083,15 +1093,15 @@ async function harvestQuota() {
         body: JSON.stringify({ fields: alertFields })
       });
       if (alertRes.ok) {
-        console.log('  âœ“ Low quota flag set: line104_low=' + isLow104 + ' (' + data.remaining.toFixed(1) + ' GB)\n');
+        console.log('  ✓ Low quota flag set: line104_low=' + isLow104 + ' (' + data.remaining.toFixed(1) + ' GB)\n');
       } else {
-        console.log('  âڑ  Flag write failed (non-critical): HTTP ' + alertRes.status);
+        console.log('  ⚠ Flag write failed (non-critical): HTTP ' + alertRes.status);
       }
     } catch(e) {
-      console.log('  âڑ  Flag write error (non-critical):', e.message);
-    }    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+      console.log('  ⚠ Flag write error (non-critical):', e.message);
+    }    // ══════════════════════════════════════
     console.log('STEP 9: TELEGRAM');
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // ══════════════════════════════════════
     try {
       const date = new Date().toLocaleString('en-GB', {
         timeZone: 'Africa/Cairo',
@@ -1102,22 +1112,22 @@ async function harvestQuota() {
       // Quota alert level
       const rem = data.remaining;
       let alertLine = '';
-      if (rem < 30)       alertLine = '\nًںڑ¨ *CRITICAL â€” Under 30 GB! Recharge immediately!*';
-      else if (rem < 50)  alertLine = '\nًں”´ *CRITICAL â€” Under 50 GB!*';
-      else if (rem < 100) alertLine = '\nًںں  *WARNING â€” Under 100 GB*';
+      if (rem < 30)       alertLine = '\n🚨 *CRITICAL — Under 30 GB! Recharge immediately!*';
+      else if (rem < 50)  alertLine = '\n🔴 *CRITICAL — Under 50 GB!*';
+      else if (rem < 100) alertLine = '\n🟠 *WARNING — Under 100 GB*';
 
       // Status icon based on level
-      const statusIcon = rem < 50 ? 'ًں”´' : rem < 100 ? 'ًںں ' : 'âœ…';
+      const statusIcon = rem < 50 ? '🔴' : rem < 100 ? '🟠' : '✅';
 
       const msg = [
-        'ًں“، *Cairo Taj â€” Line 104 Harvest*',
+        '📡 *Cairo Taj — Line 104 Harvest*',
         '',
         `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
-        `ًں“‰ Used: *${data.used.toFixed(2)} GB*`,
-        `ًں’° Balance: *${data.balance.toFixed(2)} EGP*`,
-        `ًں“‹ Plan: ${data.plan}`,
-        `ًں•گ ${date}`,
-        `ًں¤– GitHub Cloud âڑ،` + alertLine
+        `📉 Used: *${data.used.toFixed(2)} GB*`,
+        `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
+        `📋 Plan: ${data.plan}`,
+        `🕐 ${date}`,
+        `🤖 GitHub Cloud ⚡` + alertLine
       ].join('\n');
 
       const tgUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -1135,17 +1145,17 @@ async function harvestQuota() {
           body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' })
         });
         if (tgRes.ok) { tgSuccess = true; }
-        else { console.log('  âڑ  Telegram to ' + chatId + ': HTTP ' + tgRes.status); }
+        else { console.log('  ⚠ Telegram to ' + chatId + ': HTTP ' + tgRes.status); }
       }
       if (!tgSuccess) throw new Error('All Telegram sends failed');
-      console.log('  âœ“ Telegram sent!\n');
+      console.log('  ✓ Telegram sent!\n');
 
-      // CRITICAL ALERT: Under 30 GB â€” send a separate urgent message
+      // CRITICAL ALERT: Under 30 GB — send a separate urgent message
       // This triggers a second notification/ringtone on the phone
       if (rem < 30) {
         const criticalMsg = {
-          text: ['ًںڑ¨ًںڑ¨ًںڑ¨ *CRITICAL QUOTA ALERT* ًںڑ¨ًںڑ¨ًںڑ¨', '', 'âڑ ï¸ڈ *Cairo Taj â€” Line 104*',
-            `ًں“‰ Only *${rem.toFixed(2)} GB* remaining!`, 'ًں”´ *ACTION REQUIRED: Recharge immediately!*', '', `ًں•گ ${date}`].join('\n'),
+          text: ['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*',
+            `📉 Only *${rem.toFixed(2)} GB* remaining!`, '🔴 *ACTION REQUIRED: Recharge immediately!*', '', `🕐 ${date}`].join('\n'),
           parse_mode: 'Markdown',
           disable_notification: false
         };
@@ -1154,26 +1164,26 @@ async function harvestQuota() {
           await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...criticalMsg, chat_id: chatId }) });
         }
-        console.log('  ًںڑ¨ Critical alert sent!\n');
+        console.log('  🚨 Critical alert sent!\n');
       }
 
     } catch (e) {
       // Telegram failure should NOT fail the whole harvest
-      console.log('  âڑ  Telegram failed (non-critical):', e.message);
+      console.log('  ⚠ Telegram failed (non-critical):', e.message);
     }
-    console.log('â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ');
-    console.log('âœ… âœ… âœ…  SUCCESS  âœ… âœ… âœ…');
-    console.log('â”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پâ”پ');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
-    // VIGILANCE MODE â€” triggered when quota â‰¤ 50 GB
+    // ══════════════════════════════════════════════════════════════
+    // VIGILANCE MODE — triggered when quota ≤ 50 GB
     // Stays in same session, refreshes every 13 minutes, harvests
-    // until quota â‰¤ 2 GB or session dies (then restarts session).
-    // Only sends Telegram for Line 104 â€” other line unaffected.
-    // â•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گâ•گ
+    // until quota ≤ 2 GB or session dies (then restarts session).
+    // Only sends Telegram for Line 104 — other line unaffected.
+    // ══════════════════════════════════════════════════════════════
     if (data.remaining <= 50) {
-      console.log('\nًں”´ VIGILANCE MODE ACTIVATED â€” quota=' + data.remaining.toFixed(2) + ' GB â‰¤ 50 GB');
-      console.log('  Will harvest every 13 min until quota â‰¤ 2 GB or job time limit reached.\n');
+      console.log('\n🔴 VIGILANCE MODE ACTIVATED — quota=' + data.remaining.toFixed(2) + ' GB ≤ 50 GB');
+      console.log('  Will harvest every 13 min until quota ≤ 2 GB or job time limit reached.\n');
 
       const VIGILANCE_INTERVAL_MS  = 13 * 60 * 1000; // 13 minutes
       const VIGILANCE_MAX_MS       = 5 * 60 * 60 * 1000 + 45 * 60 * 1000; // 5h 45m safety cap
@@ -1182,7 +1192,7 @@ async function harvestQuota() {
       let   vigilanceRound         = 0;
       let   lastRemaining          = data.remaining;
 
-      // â”€â”€ Helper: extract quota from current page (reused from main flow) â”€â”€
+      // ── Helper: extract quota from current page (reused from main flow) ──
       async function vigilanceExtract() {
         return await tryMethods([
           async () => {
@@ -1246,7 +1256,7 @@ async function harvestQuota() {
         ], 'VIGILANCE EXTRACT', 25000);
       }
 
-      // â”€â”€ Helper: write to Firestore (Line 104 only) â”€â”€
+      // ── Helper: write to Firestore (Line 104 only) ──
       async function vigilanceFirestore(vData) {
         const vNow = new Date().toISOString();
         const vFields = {
@@ -1257,7 +1267,7 @@ async function harvestQuota() {
             used:      { doubleValue: vData.used },
             plan:      { stringValue: vData.plan },
             updatedAt: { stringValue: vNow },
-            updatedBy: { stringValue: 'GitHub Cloud âڑ، [VIGILANCE]' },
+            updatedBy: { stringValue: 'GitHub Cloud ⚡ [VIGILANCE]' },
             status:    { stringValue: 'success' }
           }}},
           lastUpdate: { stringValue: vNow }
@@ -1270,7 +1280,7 @@ async function harvestQuota() {
         // Ledger entry
         const vHistory = {
           timestamp: { stringValue: vNow },
-          user: { stringValue: 'GitHub Cloud âڑ، [VIGILANCE]' },
+          user: { stringValue: 'GitHub Cloud ⚡ [VIGILANCE]' },
           notes: { stringValue: 'vigilance-mode' },
           dokki: { mapValue: { fields: { quota: { nullValue: null }, balance: { nullValue: null } } } },
           '104': { mapValue: { fields: { quota: { doubleValue: vData.remaining }, balance: { doubleValue: vData.balance } } } },
@@ -1281,36 +1291,36 @@ async function harvestQuota() {
         return vNow;
       }
 
-      // â”€â”€ Helper: send Vigilance Telegram (Line 104 only) â”€â”€
+      // ── Helper: send Vigilance Telegram (Line 104 only) ──
       async function vigilanceTelegram(vData, vRound, elapsed, vTimestamp) {
         try {
           const rem = vData.remaining;
           const elapsedMin = Math.floor(elapsed / 60000);
           const burned = lastRemaining - rem;
           const burnRate = burned > 0 ? (burned / (elapsedMin / 60)).toFixed(2) : '0.00';
-          const hoursLeft = burnRate > 0 ? (rem / burnRate).toFixed(1) : 'âˆ‍';
+          const hoursLeft = burnRate > 0 ? (rem / burnRate).toFixed(1) : '∞';
           const date = new Date().toLocaleString('en-GB', {
             timeZone: 'Africa/Cairo', day: '2-digit', month: 'short',
             year: 'numeric', hour: '2-digit', minute: '2-digit'
           });
 
-          let icon = rem <= 2 ? 'ًںڑ¨' : rem <= 10 ? 'ًں”´' : rem <= 20 ? 'ًںں ' : 'ًںں،';
-          let urgency = rem <= 2  ? 'ًںڑ¨ *STOP â€” 2 GB REACHED! Recharge NOW!*' :
-                        rem <= 5  ? 'ًں”´ *CRITICAL â€” Under 5 GB!*' :
-                        rem <= 10 ? 'ًں”´ *CRITICAL â€” Under 10 GB! Recharge soon!*' :
-                        rem <= 20 ? 'ًںں  *WARNING â€” Under 20 GB*' :
-                        rem <= 30 ? 'ًںں، *NOTICE â€” Under 30 GB*' : '';
+          let icon = rem <= 2 ? '🚨' : rem <= 10 ? '🔴' : rem <= 20 ? '🟠' : '🟡';
+          let urgency = rem <= 2  ? '🚨 *STOP — 2 GB REACHED! Recharge NOW!*' :
+                        rem <= 5  ? '🔴 *CRITICAL — Under 5 GB!*' :
+                        rem <= 10 ? '🔴 *CRITICAL — Under 10 GB! Recharge soon!*' :
+                        rem <= 20 ? '🟠 *WARNING — Under 20 GB*' :
+                        rem <= 30 ? '🟡 *NOTICE — Under 30 GB*' : '';
 
           const msg = [
-            'âڑ، *Cairo Taj â€” Line 104 [VIGILANCE MODE]*',
+            '⚡ *Cairo Taj — Line 104 [VIGILANCE MODE]*',
             '',
             icon + ' Quota: *' + rem.toFixed(2) + ' GB* remaining',
-            'ًں“‰ Used: *' + vData.used.toFixed(2) + ' GB*',
-            'ًں’° Balance: *' + vData.balance.toFixed(2) + ' EGP*',
-            'ًں”¥ Burn rate: ~' + burnRate + ' GB/h',
-            'âڈ± Est. time left: ~' + hoursLeft + 'h',
-            'ًں”„ Vigilance round: #' + vRound + ' (' + elapsedMin + 'min in)',
-            'ًں•گ ' + date,
+            '📉 Used: *' + vData.used.toFixed(2) + ' GB*',
+            '💰 Balance: *' + vData.balance.toFixed(2) + ' EGP*',
+            '🔥 Burn rate: ~' + burnRate + ' GB/h',
+            '⏱ Est. time left: ~' + hoursLeft + 'h',
+            '🔄 Vigilance round: #' + vRound + ' (' + elapsedMin + 'min in)',
+            '🕐 ' + date,
             urgency
           ].filter(Boolean).join('\n');
 
@@ -1322,12 +1332,12 @@ async function harvestQuota() {
             await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ chat_id: chatId, text: msg, parse_mode: 'Markdown' }) });
           }
-          // Extra double-ring if â‰¤ 10 GB
+          // Extra double-ring if ≤ 10 GB
           if (rem <= 10) {
             const critMsg = {
-              text: ['ًںڑ¨ًںڑ¨ًںڑ¨ *VIGILANCE CRITICAL* ًںڑ¨ًںڑ¨ًںڑ¨', '', 'âڑ ï¸ڈ *Cairo Taj â€” Line 104*',
-                'ًں“‰ Only *' + rem.toFixed(2) + ' GB* remaining!',
-                'ًں”´ *ACTION REQUIRED: Recharge immediately!*', '', 'ًں•گ ' + date].join('\n'),
+              text: ['🚨🚨🚨 *VIGILANCE CRITICAL* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*',
+                '📉 Only *' + rem.toFixed(2) + ' GB* remaining!',
+                '🔴 *ACTION REQUIRED: Recharge immediately!*', '', '🕐 ' + date].join('\n'),
               parse_mode: 'Markdown', disable_notification: false
             };
             for (const chatId of recipients) {
@@ -1336,11 +1346,11 @@ async function harvestQuota() {
                 body: JSON.stringify({ ...critMsg, chat_id: chatId }) });
             }
           }
-          console.log('  âœ“ Vigilance Telegram sent (round #' + vRound + ')');
-        } catch(e) { console.log('  âڑ  Vigilance Telegram failed (non-critical):', e.message); }
+          console.log('  ✓ Vigilance Telegram sent (round #' + vRound + ')');
+        } catch(e) { console.log('  ⚠ Vigilance Telegram failed (non-critical):', e.message); }
       }
 
-      // â”€â”€ Helper: navigate to account overview (stay in session) â”€â”€
+      // ── Helper: navigate to account overview (stay in session) ──
       async function vigilanceRefreshPage() {
         await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 30000 });
         await sleep(3000);
@@ -1352,9 +1362,9 @@ async function harvestQuota() {
         );
       }
 
-      // â”€â”€ Helper: full re-login when session dies â”€â”€
+      // ── Helper: full re-login when session dies ──
       async function vigilanceRestartSession() {
-        console.log('  [VIGILANCE] Session died â€” restarting fresh session...');
+        console.log('  [VIGILANCE] Session died — restarting fresh session...');
         try { await browser.close(); } catch(e) {}
         // Re-launch browser
         browser = await puppeteer.launch({
@@ -1362,7 +1372,7 @@ async function harvestQuota() {
           protocolTimeout: 60000,
           args: ['--no-sandbox','--disable-setuid-sandbox','--disable-dev-shm-usage',
                  '--disable-blink-features=AutomationControlled',
-                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768','--disable-gpu'],
+                 '--disable-features=IsolateOrigins,site-per-process','--window-size=1366,768'],
           ignoreDefaultArgs: ['--enable-automation']
         });
         page = await browser.newPage();
@@ -1385,7 +1395,7 @@ async function harvestQuota() {
           await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 20000 });
           await sleep(3000);
           if (!page.url().includes('login')) {
-            console.log('  [VIGILANCE] Session restored from cookies âœ“');
+            console.log('  [VIGILANCE] Session restored from cookies ✓');
             return;
           }
           await clearCookies();
@@ -1435,7 +1445,7 @@ async function harvestQuota() {
           if (!page.url().includes('login')) break;
         }
         if (page.url().includes('login')) throw new Error('Re-login failed after session death');
-        console.log('  [VIGILANCE] Fresh login successful âœ“');
+        console.log('  [VIGILANCE] Fresh login successful ✓');
         // Save new cookies
         try {
           const newCookies = await page.cookies();
@@ -1444,11 +1454,11 @@ async function harvestQuota() {
         } catch(e) {}
       }
 
-      // â•گâ•گ MAIN VIGILANCE LOOP â•گâ•گ
+      // ══ MAIN VIGILANCE LOOP ══
       while (true) {
         const elapsed = Date.now() - vigilanceStart;
         if (elapsed >= VIGILANCE_MAX_MS) {
-          console.log('\n[VIGILANCE] 5h 45m safety cap reached â€” stopping vigilance mode.');
+          console.log('\n[VIGILANCE] 5h 45m safety cap reached — stopping vigilance mode.');
           break;
         }
 
@@ -1458,14 +1468,14 @@ async function harvestQuota() {
 
         vigilanceRound++;
         const elapsedMin = Math.floor((Date.now() - vigilanceStart) / 60000);
-        console.log('\n' + 'â•گ'.repeat(50));
-        console.log('âڑ، VIGILANCE ROUND #' + vigilanceRound + ' (' + elapsedMin + 'min elapsed)');
-        console.log('â•گ'.repeat(50));
+        console.log('\n' + '═'.repeat(50));
+        console.log('⚡ VIGILANCE ROUND #' + vigilanceRound + ' (' + elapsedMin + 'min elapsed)');
+        console.log('═'.repeat(50));
 
         try {
-          // Refresh the account overview page (same session â€” no new login)
+          // Refresh the account overview page (same session — no new login)
           await vigilanceRefreshPage();
-          console.log('  âœ“ Page refreshed, extracting data...');
+          console.log('  ✓ Page refreshed, extracting data...');
 
           // Extract
           const vData = await vigilanceExtract();
@@ -1473,7 +1483,7 @@ async function harvestQuota() {
 
           // Write to Firestore + Ledger
           await vigilanceFirestore(vData);
-          console.log('  âœ“ Firestore + Ledger updated');
+          console.log('  ✓ Firestore + Ledger updated');
 
           // Update low-quota flag
           try {
@@ -1487,7 +1497,7 @@ async function harvestQuota() {
             const alertMask = 'updateMask.fieldPaths=line104_low&updateMask.fieldPaths=line104_quota&updateMask.fieldPaths=line104_updatedAt';
             const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
             await fetch(alertUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fields: alertFields }) });
-          } catch(e) { console.log('  âڑ  Flag update failed (non-critical):', e.message); }
+          } catch(e) { console.log('  ⚠ Flag update failed (non-critical):', e.message); }
 
           // Send Telegram (Line 104 only)
           await vigilanceTelegram(vData, vigilanceRound, Date.now() - vigilanceStart, new Date().toISOString());
@@ -1495,9 +1505,9 @@ async function harvestQuota() {
           // Update burn rate reference
           lastRemaining = vData.remaining;
 
-          // Stop condition: quota â‰¤ 2 GB
+          // Stop condition: quota ≤ 2 GB
           if (vData.remaining <= VIGILANCE_STOP_GB) {
-            console.log('\nًںڑ¨ [VIGILANCE] Quota reached ' + vData.remaining.toFixed(2) + ' GB â€” STOP THRESHOLD HIT.');
+            console.log('\n🚨 [VIGILANCE] Quota reached ' + vData.remaining.toFixed(2) + ' GB — STOP THRESHOLD HIT.');
             console.log('  Vigilance mode complete. Awaiting manual recharge.');
             break;
           }
@@ -1505,12 +1515,12 @@ async function harvestQuota() {
         } catch (vErr) {
           console.log('  [VIGILANCE] Round #' + vigilanceRound + ' error: ' + vErr.message);
           if (vErr.message.includes('SESSION_DIED') || vErr.message.includes('redirected to login') || vErr.message.includes('ALL METHODS FAILED')) {
-            console.log('  [VIGILANCE] Session dead â€” attempting restart...');
+            console.log('  [VIGILANCE] Session dead — attempting restart...');
             try {
               await vigilanceRestartSession();
               console.log('  [VIGILANCE] Session restarted. Will retry on next round.');
             } catch (restartErr) {
-              console.log('  [VIGILANCE] Restart failed: ' + restartErr.message + ' â€” stopping vigilance.');
+              console.log('  [VIGILANCE] Restart failed: ' + restartErr.message + ' — stopping vigilance.');
               break;
             }
           } else {
@@ -1523,7 +1533,7 @@ async function harvestQuota() {
     } // end vigilance mode
 
   } catch (error) {
-    console.error('\nâ‌Œ ERROR:', error.message);
+    console.error('\n❌ ERROR:', error.message);
     if (page) {
       try {
         const ss = await withTimeout(page.screenshot({ encoding: 'base64' }), 5000, 'screenshot');
@@ -1545,24 +1555,24 @@ async function harvestQuota() {
 async function main() {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`\n${'â•گ'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'â•گ'.repeat(50)}\n`);
+      console.log(`\n${'═'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'═'.repeat(50)}\n`);
       await harvestQuota();
-      console.log('\nًںژ‰ COMPLETE!');
+      console.log('\n🎉 COMPLETE!');
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
-      // If WE blocked us, don't retry â€” it will make things worse
+      // If WE blocked us, don't retry — it will make things worse
       if (error.message && error.message.includes('WE_BLOCKED')) {
-        console.error('â›” WE block detected â€” stopping all retries to avoid extending the block period');
-        console.error('ًں’€ Will retry on next scheduled run automatically');
+        console.error('⛔ WE block detected — stopping all retries to avoid extending the block period');
+        console.error('💀 Will retry on next scheduled run automatically');
         process.exit(1);
       }
       if (attempt < MAX_RETRIES) {
-        const d = randomDelay(90000, 120000);
+        const d = randomDelay(30000, 45000);
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
         await sleep(d);
       } else {
-        console.error('\nًں’€ ALL ATTEMPTS FAILED');
+        console.error('\n💀 ALL ATTEMPTS FAILED');
         process.exit(1);
       }
     }
