@@ -38,4 +38,4 @@ jobs:
           PUPPETEER_EXECUTABLE_PATH: /Users/runner/hostedtoolcache/setup-chrome/chromium/stable/arm64/Contents/MacOS/chrome
         run: |
           cd github-harvester
-          node harvester-dokki.js
+          node harvester-dokki-test.js
