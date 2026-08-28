@@ -648,7 +648,7 @@ async function harvestQuota() {
         }, imgHandle, filter);
       }
 
-      // HELPER: 4 PSM modes + smart character correction
+      // HELPER: 4 PSM modes - NO character corrections (trust OCR as-is)
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
@@ -658,11 +658,8 @@ async function harvestQuota() {
               tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
               tessedit_pageseg_mode: mode
             });
-            let text = r.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-            text = text.replace(/[|!l]/g,'1').replace(/[oO]/g,'0').replace(/[I]/g,'1')
-                       .replace(/[S]/g,'5').replace(/[s]/g,'5').replace(/[Z]/g,'2')
-                       .replace(/[z]/g,'2').replace(/[B]/g,'8').replace(/[G]/g,'6')
-                       .replace(/[g]/g,'9').replace(/[q]/g,'9');
+            // Raw OCR - NO corrections - trust what Tesseract reads
+            const text = r.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
             if (text && text.length >= 4 && text.length <= 6) results.push(text);
           } catch(e) {}
         }
@@ -719,17 +716,46 @@ async function harvestQuota() {
           }
           if (captchaSolved) break;
           if (!modalFound) {
-            console.log('    Modal not found, re-clicking Login...');
+            // WE closed the modal after wrong answer - need full page reload + re-login
+            console.log('    Modal closed - doing full page reload...');
+            await page.goto('https://my.te.eg/echannel/', { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.waitForFunction(() => document.querySelectorAll('input').length >= 2, { timeout: 15000 });
+            await sleep(3000);
+            // Re-enter credentials
+            await page.focus('#login_loginid_input_01');
+            await sleep(1000);
+            await page.type('#login_loginid_input_01', WE_USERNAME, { delay: 120 });
+            await sleep(2000);
+            // Re-select dropdown
+            const dropdown = await page.$('.ant-select-selector, .ant-select');
+            if (dropdown) {
+              await dropdown.click(); await sleep(1500);
+              await page.evaluate(() => {
+                const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
+                const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
+                if (internet) internet.click();
+              });
+              await sleep(1000);
+            }
+            // Re-enter password
+            await page.focus('#login_password_input_01');
+            await sleep(1000);
+            await page.type('#login_password_input_01', WE_PASSWORD, { delay: 120 });
+            await sleep(2000);
+            // Re-submit
             await page.evaluate(() => {
               const btns = Array.from(document.querySelectorAll('button'));
               const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
               if (btn) btn.click();
             });
-            await sleep(3000);
-            if (!await isModalOpen()) {
+            await sleep(6000);
+            // Check for new captcha
+            const nowOpen = await isModalOpen();
+            if (!nowOpen) {
               if (!page.url().includes('login')) { captchaSolved = true; break; }
-              console.log('    ! Still no modal, skipping round'); continue;
+              console.log('    ! No captcha after reload, skipping round'); continue;
             }
+            console.log('    New captcha appeared after reload!');
           }
           await sleep(1000);
         }
@@ -760,17 +786,26 @@ async function harvestQuota() {
 
           // CONSENSUS: Pick most frequent answer
           const freq = {};
-          allAnswers.forEach(a => { const k = a.text.toLowerCase(); freq[k] = (freq[k]||0) + 1; });
-          let best = '', maxCount = 0;
-          for (const [ans, count] of Object.entries(freq)) {
+          allAnswers.forEach(a => { const k = a.text; freq[k] = (freq[k]||0) + 1; });
+          // Also count case-insensitive groups
+          const freqLower = {};
+          allAnswers.forEach(a => { const k = a.text.toLowerCase(); freqLower[k] = (freqLower[k]||0) + 1; });
+          let bestLower = '', maxCount = 0;
+          for (const [ans, count] of Object.entries(freqLower)) {
             console.log('      "' + ans + '" x' + count);
-            if (count > maxCount || (count === maxCount && ans.length === 5)) { maxCount = count; best = ans; }
+            if (count > maxCount || (count === maxCount && ans.length === 5)) { maxCount = count; bestLower = ans; }
           }
+          // Find the most common casing for this answer
+          const casings = allAnswers.filter(a => a.text.toLowerCase() === bestLower).map(a => a.text);
+          const casingFreq = {};
+          casings.forEach(c => { casingFreq[c] = (casingFreq[c]||0) + 1; });
+          const best = Object.entries(casingFreq).sort((a,b) => b[1]-a[1])[0][0];
           console.log('    [CONSENSUS] Best: "' + best + '" (' + maxCount + ' votes)');
 
-          // Try all case variants
-          const variants = [...new Set([best, best.toUpperCase(), best.toLowerCase(), best[0].toUpperCase()+best.slice(1).toLowerCase()])];
-          console.log('    [VARIANTS]', variants.join(', '));
+          // Submit ONLY the consensus answer - WE allows very few attempts!
+          // Try: exact casing first, then UPPER, then lower
+          const variants = [...new Set([best, best.toUpperCase(), best.toLowerCase()])];
+          console.log('    [VARIANTS] Will try:', variants.join(', '));
 
           for (const attempt of variants) {
             console.log('    -> Trying:', attempt);
