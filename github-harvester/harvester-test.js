@@ -554,14 +554,58 @@ async function harvestQuota() {
       const pageState = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
         const text = document.body.innerText.toLowerCase();
-        const hasCaptcha = !!modal || text.includes('verification') || text.includes('enter code');
+        
+        // Differentiate between T&C modal and captcha modal
+        let hasCaptcha = false;
+        let isTermsModal = false;
+        
+        if (modal) {
+          // Check if it's Terms & Conditions modal (has close-terms or start-chat-modal buttons)
+          isTermsModal = !!modal.querySelector('#close-terms, #start-chat-modal, .TC-content, .TC-header');
+          
+          // Check if it's captcha modal (has img/canvas and NOT T&C buttons)
+          const hasImage = !!modal.querySelector('img, canvas');
+          const hasCaptchaText = modal.innerText?.toLowerCase().includes('verification') || 
+                                  modal.innerText?.toLowerCase().includes('enter code') ||
+                                  modal.innerText?.toLowerCase().includes('captcha');
+          
+          hasCaptcha = !isTermsModal && (hasImage || hasCaptchaText);
+        }
+        
+        // Also check body text for verification messages
+        if (!hasCaptcha && (text.includes('verification') || text.includes('enter code'))) {
+          hasCaptcha = true;
+        }
+        
         // Detect WE block messages
         const isBlocked = text.includes('maximum') || text.includes('too many') ||
                           text.includes('exceeded') || text.includes('try again') ||
                           text.includes('blocked') || text.includes('محاولات') ||
                           text.includes('الحد الاقصى') || text.includes('مره اخرى');
-        return { hasCaptcha, isBlocked, text: text.slice(0, 200) };
+        return { hasCaptcha, isTermsModal, isBlocked, text: text.slice(0, 200) };
       });
+
+      // Handle Terms & Conditions modal - close it and retry login
+      if (pageState.isTermsModal) {
+        console.log('  [T&C] Terms & Conditions modal detected, closing...');
+        await page.evaluate(() => {
+          const closeBtn = document.querySelector('#close-terms, .modal .close, [aria-label="Close"]');
+          if (closeBtn) closeBtn.click();
+        }).catch(() => {});
+        await sleep(2000);
+        
+        // Check if we're still on login page after closing T&C
+        const stillOnLogin = page.url().includes('login');
+        if (stillOnLogin) {
+          console.log('  [T&C] Closed T&C, retrying login submit...');
+          // Re-click login button
+          await page.evaluate(() => {
+            const loginBtn = document.querySelector('button[type="submit"], .ant-btn-primary, button.submit');
+            if (loginBtn) loginBtn.click();
+          }).catch(() => {});
+        }
+        continue; // Continue waiting loop
+      }
 
       if (pageState.isBlocked) {
         postLoginState = 'blocked';
