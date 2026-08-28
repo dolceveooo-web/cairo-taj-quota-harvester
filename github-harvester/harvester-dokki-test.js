@@ -627,8 +627,8 @@ async function harvestQuota() {
             else if (f === 'redWide')  { keep = r > 60 && (r-g) > 15 && (r-b) > 15 && !isBlue; }
             else if (f === 'megaRed')  { keep = r > 70 && r > g+20 && r > b+20 && b < 120; }
             else if (f === 'darkNoBlue') { const lum=0.299*r+0.587*g+0.114*b; keep=lum<140&&!isBlue; }
-            else if (f === 'darkStrict') { const lum=0.299*r+0.587*g+0.114*b; keep=lum<100&&!isBlue; }
-            else if (f === 'redOrBlack') { const lum=0.299*r+0.587*g+0.114*b; keep=((r>80&&r>g+20)||lum<120)&&!isBlue; }
+            else if (f === 'saturationBoost') { const max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max===0?0:(max-min)/max; keep=sat>0.4&&r>g&&r>b&&!isBlue; }
+            else if (f === 'warmColors') { keep = (r>g+15)&&(r>b+15)&&(r+g>b*1.5)&&!isBlue; }
             else if (f === 'antiBlue') { keep = !isBlue && !isGray; }
             else if (f === 'colorOnly') { const max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max===0?0:(max-min)/max; keep=sat>0.3&&r>b&&!isBlue; }
             else if (f === 'notBlueNotGray') { keep = !isBlue && !(isGray && r > 140); }
@@ -693,7 +693,7 @@ async function harvestQuota() {
       }
 
       // MAIN EXTREME CAPTCHA LOOP - 12 rounds, 10 filters, consensus voting
-      const FILTERS = ['redOnly','megaRed','redStrict','redWide','redOrBlack','antiBlue','darkNoBlue','darkStrict','colorOnly','notBlueNotGray'];
+      const FILTERS = ['redOnly','megaRed','redStrict','redWide','darkNoBlue','saturationBoost','warmColors','antiBlue','colorOnly','notBlueNotGray'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
