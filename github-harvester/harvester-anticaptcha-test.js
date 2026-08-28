@@ -64,31 +64,29 @@ async function harvestQuota() {
       if (!res.ok) return null;
       const doc = await res.json();
       const cookieStr = doc?.fields?.cookies?.stringValue;
-      const storageStr = doc?.fields?.storage?.stringValue;
       const savedAt = doc?.fields?.savedAt?.stringValue;
       if (!cookieStr || !savedAt) return null;
-      // Extended to 8 hours for better session persistence
+      // Only use cookies saved within last 4 hours
       const age = Date.now() - new Date(savedAt).getTime();
-      if (age > 8 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>8h old), will do fresh login'); return null; }
-      console.log('  [SESSION] Found saved cookies+storage (' + Math.floor(age/60000) + 'm old)');
-      return { cookies: JSON.parse(cookieStr), storage: storageStr ? JSON.parse(storageStr) : null };
+      if (age > 4 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>4h old), will do fresh login'); return null; }
+      console.log('  [SESSION] Found saved cookies (' + Math.floor(age/60000) + 'm old)');
+      return JSON.parse(cookieStr);
     } catch(e) { console.log('  [SESSION] Could not load cookies:', e.message); return null; }
   }
 
-  async function saveCookies(cookies, storageData) {
+  async function saveCookies(cookies) {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
       await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: {
-          cookies:   { stringValue: JSON.stringify(cookies) },
-          storage:   { stringValue: storageData ? JSON.stringify(storageData) : '{}' },
-          savedAt:   { stringValue: new Date().toISOString() },
-          line:      { stringValue: '104' }
+          cookies:  { stringValue: JSON.stringify(cookies) },
+          savedAt:  { stringValue: new Date().toISOString() },
+          line:     { stringValue: '104' }
         }})
       });
-      console.log('  [SESSION] Cookies + localStorage saved to Firestore ✓');
+      console.log('  [SESSION] Cookies saved to Firestore ✓');
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
   }
 
@@ -140,7 +138,7 @@ async function harvestQuota() {
       Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
     });
 
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36');
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.setViewport({ width: 1366, height: 768 });
 
     page.on('dialog', async dialog => {
@@ -153,29 +151,10 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('STEP 0: SESSION CHECK');
     let sessionValid = false;
-    const savedData = await loadSavedCookies();
-    const savedCookies = savedData?.cookies || savedData;
-    const savedStorage = savedData?.storage || null;
-    
+    const savedCookies = await loadSavedCookies();
     if (savedCookies && savedCookies.length > 0) {
       try {
-        console.log('  Trying saved session cookies + localStorage...');
-        // Restore localStorage BEFORE navigation
-        if (savedStorage) {
-          await page.evaluateOnNewDocument((storage) => {
-            if (storage.local) {
-              for (const [k, v] of Object.entries(storage.local)) {
-                try { localStorage.setItem(k, v); } catch(e) {}
-              }
-            }
-            if (storage.session) {
-              for (const [k, v] of Object.entries(storage.session)) {
-                try { sessionStorage.setItem(k, v); } catch(e) {}
-              }
-            }
-          }, savedStorage);
-          console.log('  [SESSION] localStorage/sessionStorage will be restored');
-        }
+        console.log('  Trying saved session cookies...');
         await page.setCookie(...savedCookies);
         await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 20000 });
         await sleep(3000);
@@ -861,24 +840,12 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('  ✓ Login successful!\n');
 
-    // Save session cookies + localStorage for next run
+    // Save session cookies for next run (avoids login entirely if session still valid)
     try {
       const cookies = await page.cookies();
       const relevantCookies = cookies.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
-      const storageData = await page.evaluate(() => {
-        const local = {}, session = {};
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          local[k] = localStorage.getItem(k);
-        }
-        for (let i = 0; i < sessionStorage.length; i++) {
-          const k = sessionStorage.key(i);
-          session[k] = sessionStorage.getItem(k);
-        }
-        return { local, session };
-      });
       if (relevantCookies.length > 0) {
-        await saveCookies(relevantCookies, storageData);
+        await saveCookies(relevantCookies);
       }
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
