@@ -581,14 +581,14 @@ async function harvestQuota() {
     }
 
     // ======================================
-    // CAPTCHA ENGINE v4 (only if captcha was detected)
-    // ======================================
     if (postLoginState === 'captcha') {
-      console.log('  [CAPTCHA] Ultimate Engine v4 starting...\n');
+      console.log('  [CAPTCHA] EXTREME Engine v5 - 10 filters + consensus voting\n');
 
-      // HELPER: Find the captcha image (largest img inside modal)
+      // HELPER: Find captcha image - tries multiple selectors
       async function findCaptchaImg() {
         return await page.evaluateHandle(() => {
+          const specific = document.querySelector('.captcha-img, img[alt*="captcha"], img[alt*="Captcha"], img[src*="captcha"], img[src*="verify"]');
+          if (specific && specific.naturalWidth > 0) return specific;
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return null;
           const imgs = Array.from(modal.querySelectorAll('img'));
@@ -604,11 +604,11 @@ async function harvestQuota() {
         });
       }
 
-      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
+      // HELPER: 10 BLUE LINE KILLER filters at 4x scale
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
-          const scale = 3;
+          const scale = 4;
           const c = document.createElement('canvas');
           c.width = imgEl.naturalWidth * scale;
           c.height = imgEl.naturalHeight * scale;
@@ -620,48 +620,48 @@ async function harvestQuota() {
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
             let keep = false;
-            if (f === 'red') {
-              // Red isolation: keep reddish pixels, kill blue line + gray bg
-              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
-            } else if (f === 'dark') {
-              // Dark text: keep anything with low luminance
-              const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = lum < 140;
-            } else {
-              // Saturated: keep colored pixels, remove gray/white
-              const max = Math.max(r,g,b), min = Math.min(r,g,b);
-              const sat = max === 0 ? 0 : (max - min) / max;
-              keep = sat > 0.3 && r > g;
-            }
+            const isBlue = b > 100 && b > r + 20 && b > g + 20;
+            const isGray = Math.abs(r-g) < 20 && Math.abs(g-b) < 20 && Math.abs(r-b) < 20;
+            if (f === 'redOnly')       { keep = r > 80 && (r-g) > 25 && (r-b) > 25 && !isBlue; }
+            else if (f === 'redStrict'){ keep = r > 120 && (r-g) > 50 && (r-b) > 50 && !isBlue; }
+            else if (f === 'redWide')  { keep = r > 60 && (r-g) > 15 && (r-b) > 15 && !isBlue; }
+            else if (f === 'megaRed')  { keep = r > 70 && r > g+20 && r > b+20 && b < 120; }
+            else if (f === 'darkNoBlue') { const lum=0.299*r+0.587*g+0.114*b; keep=lum<140&&!isBlue; }
+            else if (f === 'darkStrict') { const lum=0.299*r+0.587*g+0.114*b; keep=lum<100&&!isBlue; }
+            else if (f === 'redOrBlack') { const lum=0.299*r+0.587*g+0.114*b; keep=((r>80&&r>g+20)||lum<120)&&!isBlue; }
+            else if (f === 'antiBlue') { keep = !isBlue && !isGray; }
+            else if (f === 'colorOnly') { const max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max===0?0:(max-min)/max; keep=sat>0.3&&r>b&&!isBlue; }
+            else if (f === 'notBlueNotGray') { keep = !isBlue && !(isGray && r > 140); }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
+            d[i+3] = 255;
           }
           ctx.putImageData(data, 0, 0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with dual PSM modes
+      // HELPER: 4 PSM modes + smart character correction
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
-        const r1 = await Tesseract.recognize(imageData, 'eng', {
-          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-          tessedit_pageseg_mode: '8'
-        });
-        const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-        if (t1) results.push(t1);
-        if (t1.length !== 5) {
-          const r2 = await Tesseract.recognize(imageData, 'eng', {
-            tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-            tessedit_pageseg_mode: '7'
-          });
-          const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-          if (t2 && t2 !== t1) results.push(t2);
+        for (const mode of ['8','7','6','13']) {
+          try {
+            const r = await Tesseract.recognize(imageData, 'eng', {
+              tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+              tessedit_pageseg_mode: mode
+            });
+            let text = r.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+            text = text.replace(/[|!l]/g,'1').replace(/[oO]/g,'0').replace(/[I]/g,'1')
+                       .replace(/[S]/g,'5').replace(/[s]/g,'5').replace(/[Z]/g,'2')
+                       .replace(/[z]/g,'2').replace(/[B]/g,'8').replace(/[G]/g,'6')
+                       .replace(/[g]/g,'9').replace(/[q]/g,'9');
+            if (text && text.length >= 4 && text.length <= 6) results.push(text);
+          } catch(e) {}
         }
-        return results;
+        return [...new Set(results)];
       }
 
-      // HELPER: Submit captcha answer into modal input
+      // HELPER: Submit captcha answer
       async function submitAnswer(answer) {
         console.log('    -> Submitting:', answer);
         const ok = await page.evaluate((ans) => {
@@ -669,30 +669,21 @@ async function harvestQuota() {
           if (!modal) return false;
           const inp = modal.querySelector('input.ant-input, input[type="text"]');
           if (!inp) return false;
-          inp.focus();
-          inp.click();
+          inp.focus(); inp.click();
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-          setter.call(inp, '');
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
-          setter.call(inp, ans);
-          inp.dispatchEvent(new Event('input', { bubbles: true }));
+          setter.call(inp, ''); inp.dispatchEvent(new Event('input', { bubbles: true }));
+          setter.call(inp, ans); inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-          // Find the OK/confirm button — NOT Cancel. Look for button with ok/confirm text,
-          // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
           const allBtns = Array.from(modal.querySelectorAll('button'));
           const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
                       modal.querySelector('button.ant-btn-primary') ||
-                      allBtns[allBtns.length - 1]; // last button = OK
-          console.log('[captcha] Clicking button:', btn ? btn.textContent.trim() : 'none', 'of', allBtns.length, 'buttons');
+                      allBtns[allBtns.length - 1];
           if (btn) btn.click();
           return true;
         }, answer);
         if (!ok) {
-          console.log('    -> Keyboard fallback');
-          await page.keyboard.press('Tab');
-          await sleep(200);
-          await page.keyboard.type(answer, { delay: 40 });
-          await sleep(300);
+          await page.keyboard.press('Tab'); await sleep(200);
+          await page.keyboard.type(answer, { delay: 40 }); await sleep(300);
           await page.keyboard.press('Enter');
         }
         await sleep(5000);
@@ -701,62 +692,25 @@ async function harvestQuota() {
 
       // HELPER: Check if modal is still open
       async function isModalOpen() {
-        return await page.evaluate(() => {
-          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-          return !!modal;
-        });
+        return await page.evaluate(() => !!document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]'));
       }
 
-      // HELPER: Re-trigger captcha by clicking Login again
-      async function retriggerLogin() {
-        console.log('    -> Modal closed, re-clicking Login...');
-        await page.evaluate(() => {
-          const btns = Array.from(document.querySelectorAll('button'));
-          const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
-          if (btn) btn.click();
-        });
-        // Wait for captcha modal to reappear
-        for (let w = 0; w < 15; w++) {
-          await sleep(1000);
-          const hasModal = await page.evaluate(() => {
-            const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-            return !!modal;
-          });
-          if (hasModal) {
-            console.log('    -> New captcha modal appeared');
-            await sleep(2000);
-            return true;
-          }
-          // Check if we navigated away (login succeeded without captcha this time)
-          if (!page.url().includes('login')) return false;
-        }
-        return false;
-      }
-
-      // MAIN CAPTCHA LOOP (6 rounds — enough to solve, avoids IP block from too many attempts)
-      const FILTERS = ['red', 'dark', 'contrast'];
+      // MAIN EXTREME CAPTCHA LOOP - 12 rounds, 10 filters, consensus voting
+      const FILTERS = ['redOnly','megaRed','redStrict','redWide','redOrBlack','antiBlue','darkNoBlue','darkStrict','colorOnly','notBlueNotGray'];
       let captchaSolved = false;
 
-      for (let round = 1; round <= 6 && !captchaSolved; round++) {
-        console.log('  -- Round', round, '/ 6 --');
+      for (let round = 1; round <= 12 && !captchaSolved; round++) {
+        console.log('  -- Round', round, '/ 12 --');
 
-        // Wait for captcha modal to be present (it appears automatically after wrong answer)
         if (round > 1) {
           let modalFound = false;
           for (let w = 0; w < 10; w++) {
             await sleep(1000);
-            const isOpen = await isModalOpen();
-            if (isOpen) { modalFound = true; break; }
-            // Check if login succeeded (navigated away)
-            if (!page.url().includes('login')) {
-              captchaSolved = true;
-              console.log('  [OK] Navigated away - login succeeded!');
-              break;
-            }
+            if (await isModalOpen()) { modalFound = true; break; }
+            if (!page.url().includes('login')) { captchaSolved = true; console.log('  [OK] Login succeeded!'); break; }
           }
           if (captchaSolved) break;
           if (!modalFound) {
-            // Modal didn't appear - try clicking Login to trigger it
             console.log('    Modal not found, re-clicking Login...');
             await page.evaluate(() => {
               const btns = Array.from(document.querySelectorAll('button'));
@@ -764,52 +718,57 @@ async function harvestQuota() {
               if (btn) btn.click();
             });
             await sleep(3000);
-            const nowOpen = await isModalOpen();
-            if (!nowOpen) {
+            if (!await isModalOpen()) {
               if (!page.url().includes('login')) { captchaSolved = true; break; }
-              console.log('    ! Still no modal, skipping round');
-              continue;
+              console.log('    ! Still no modal, skipping round'); continue;
             }
           }
-          await sleep(1000); // Brief wait for new captcha image to load
+          await sleep(1000);
         }
 
         try {
-          // Wait for valid captcha image (up to 8s)
+          // Wait up to 15s for captcha image
           let imgHandle = null;
-          for (let retry = 0; retry < 8; retry++) {
+          for (let retry = 0; retry < 15; retry++) {
             imgHandle = await findCaptchaImg();
             const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
             if (isValid) break;
-            imgHandle = null;
-            await sleep(1000);
+            imgHandle = null; await sleep(1000);
           }
-          if (!imgHandle) { console.log('    ! No valid captcha image after 8s'); continue; }
+          if (!imgHandle) { console.log('    ! No valid captcha image after 15s'); continue; }
 
-          // Try each filter until we get a 5-char result
-          let bestAnswer = '';
+          // STUDY: Process with all 10 filters
+          let allAnswers = [];
+          console.log('    [STUDY] Processing with all 10 filters...');
           for (const filter of FILTERS) {
             const b64 = await canvasProcess(imgHandle, filter);
             if (!b64) continue;
             const texts = await ocrRead(b64);
-            const match = texts.find(t => t.length === 5);
-            console.log('    [' + filter + '] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
-            if (match) { bestAnswer = match; break; }
+            for (const text of texts) if (text.length >= 4 && text.length <= 6) allAnswers.push({ filter, text });
+            if (texts.length > 0) console.log('      [' + filter + ']:', texts.join(', '));
           }
 
-          if (!bestAnswer) {
-            console.log('    ! No 5-char result from any filter');
-            continue;
+          if (allAnswers.length === 0) { console.log('    ! No candidates found'); continue; }
+
+          // CONSENSUS: Pick most frequent answer
+          const freq = {};
+          allAnswers.forEach(a => { const k = a.text.toLowerCase(); freq[k] = (freq[k]||0) + 1; });
+          let best = '', maxCount = 0;
+          for (const [ans, count] of Object.entries(freq)) {
+            console.log('      "' + ans + '" x' + count);
+            if (count > maxCount || (count === maxCount && ans.length === 5)) { maxCount = count; best = ans; }
           }
-          // One attempt per round — cycle through case variants across rounds
-          const variantIndex = (round - 1) % 3;
-          const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
-          console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
-          captchaSolved = await submitAnswer(attempt);
-          if (captchaSolved) {
-            console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
-          } else {
-            console.log('    X Wrong answer "' + attempt + '", next round...');
+          console.log('    [CONSENSUS] Best: "' + best + '" (' + maxCount + ' votes)');
+
+          // Try all case variants
+          const variants = [...new Set([best, best.toUpperCase(), best.toLowerCase(), best[0].toUpperCase()+best.slice(1).toLowerCase()])];
+          console.log('    [VARIANTS]', variants.join(', '));
+
+          for (const attempt of variants) {
+            console.log('    -> Trying:', attempt);
+            captchaSolved = await submitAnswer(attempt);
+            if (captchaSolved) { console.log('  >>> CAPTCHA SOLVED with "' + attempt + '" on round', round, '! <<<'); break; }
+            else { console.log('    X Wrong: "' + attempt + '"'); await sleep(2000); if (!await isModalOpen()) break; }
           }
         } catch (e) {
           console.log('    ! Error:', e.message);
