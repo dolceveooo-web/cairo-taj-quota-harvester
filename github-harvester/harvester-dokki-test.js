@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fetch = require('node-fetch');
+
 puppeteer.use(StealthPlugin());
 
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
@@ -53,10 +54,7 @@ async function harvestQuota() {
   console.log('🚀 STARTING...\n');
   let browser, page;
 
-  // ── Session Cookie Helpers ─────────────────────────────────────────────────
-  // Save/load cookies via Firestore so we can skip login when session is still valid
-  // Cookies stored in quota_settings/session_104 as a JSON string
-
+  // ── Session Cookie Helpers (Dokki) ────────────────────────────────────────
   async function loadSavedCookies() {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_dokki?key=${FIREBASE_API_KEY}`;
@@ -97,7 +95,6 @@ async function harvestQuota() {
       console.log('  [SESSION] Cookies cleared');
     } catch(e) {}
   }
-
   // ──────────────────────────────────────────────────────────────────────────
 
   try {
@@ -151,7 +148,6 @@ async function harvestQuota() {
     console.log('STEP 0: SESSION CHECK');
     let sessionValid = false;
     const savedCookies = await loadSavedCookies();
-
     if (savedCookies && savedCookies.length > 0) {
       try {
         console.log('  Trying saved session cookies...');
@@ -233,7 +229,6 @@ async function harvestQuota() {
         bodyLen: document.body.innerHTML.length
       };
     }), 10000, 'diagnostics');
-
     console.log('  URL:', diag.url);
     console.log('  Inputs found:', diag.inputCount);
     console.log('  .ant-select:', diag.hasAntSelect, ' .ant-input:', diag.hasAntInput);
@@ -370,14 +365,13 @@ async function harvestQuota() {
     console.log('STEP 3: DROPDOWN');
     // ======================================
     await tryMethods([
-      // M1: Click dropdown, find Internet option, verify it's actually selected
       async () => {
         await page.waitForFunction(() => !!document.querySelector('.ant-select-selector, .ant-select'), { timeout: 10000 });
         await sleep(500);
         const dropdown = await page.$('.ant-select-selector, .ant-select');
         if (!dropdown) throw new Error('dropdown not found after wait');
         await dropdown.click();
-        await sleep(2000); // wait longer for options to appear
+        await sleep(1500);
         const clicked = await page.evaluate(() => {
           const items = Array.from(document.querySelectorAll('.ant-select-item-option, .ant-select-item, li'));
           const internet = items.find(i => i.textContent.toLowerCase().includes('internet'));
@@ -386,80 +380,41 @@ async function harvestQuota() {
         });
         if (!clicked) throw new Error('Internet option not found');
         console.log('    waitForFunction + click, selected:', clicked);
-        await sleep(1000);
-        // VERIFY: check the dropdown actually shows "Internet" now
-        const verified = await page.evaluate(() => {
-          const sel = document.querySelector('.ant-select-selection-item, .ant-select-selector');
-          return sel?.innerText?.trim() || '';
-        });
-        console.log('    Dropdown verified value:', verified);
-        if (!verified.toLowerCase().includes('internet')) throw new Error('Dropdown not confirmed as Internet: ' + verified);
+        await sleep(500);
       },
-      // M2: Use keyboard to select Internet
       async () => {
         await page.waitForSelector('.ant-select-selector', { timeout: 10000 });
         await sleep(500);
         await page.click('.ant-select-selector');
-        await sleep(2000);
-        // Type to filter then select
-        await page.keyboard.type('Internet', { delay: 100 });
-        await sleep(1000);
+        await sleep(1500);
         await page.evaluate(() => {
           for (let el of document.querySelectorAll('.ant-select-item-option, li, div')) {
             if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
           }
         });
-        await sleep(1000);
-        const verified = await page.evaluate(() => {
-          const sel = document.querySelector('.ant-select-selection-item, .ant-select-selector');
-          return sel?.innerText?.trim() || '';
-        });
-        console.log('    M2 Dropdown verified value:', verified);
-        if (!verified.toLowerCase().includes('internet')) throw new Error('M2 Dropdown not confirmed: ' + verified);
-        console.log('    waitForSelector + type + click');
+        console.log('    waitForSelector + click');
+        await sleep(500);
       },
-      // M3: Arrow key selection
       async () => {
         await page.waitForSelector('.ant-select', { timeout: 10000 });
         await page.click('.ant-select');
-        await sleep(2000);
+        await sleep(1500);
         await page.keyboard.press('ArrowDown');
-        await sleep(500);
+        await sleep(300);
         await page.keyboard.press('Enter');
-        await sleep(1000);
-        const verified = await page.evaluate(() => {
-          const sel = document.querySelector('.ant-select-selection-item, .ant-select-selector');
-          return sel?.innerText?.trim() || '';
-        });
-        console.log('    M3 Dropdown verified value:', verified);
         console.log('    click + arrow + enter');
       },
-      // M4: Direct React state injection
       async () => {
         await sleep(2000);
-        const ok = await page.evaluate(() => {
-          // Find the hidden select input and set its value directly
-          const input = document.querySelector('#login_input_type_01, input[id*="type"]');
-          if (input) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-            nativeSetter.call(input, 'Internet');
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-          }
-          // Also click the visual dropdown
-          document.querySelector('.ant-select-selector')?.click();
-          return true;
-        });
-        await sleep(1500);
+        await page.evaluate(() => { document.querySelector('.ant-select-selector')?.click(); });
+        await sleep(2000);
         await page.evaluate(() => {
-          for (let el of document.querySelectorAll('li, div, span, .ant-select-item')) {
+          for (let el of document.querySelectorAll('li, div, span')) {
             if (el.textContent?.toLowerCase().includes('internet')) { el.click(); return; }
           }
         });
-        await sleep(1000);
-        console.log('    M4 React injection + click');
+        console.log('    evaluate click + broad search');
       },
-      // M5: Generic selector + type
       async () => {
         await sleep(2000);
         const els = await page.$$('[class*="select"]');
@@ -467,34 +422,10 @@ async function harvestQuota() {
         await page.keyboard.type('Internet');
         await sleep(500);
         await page.keyboard.press('Enter');
-        console.log('    M5 generic selector + type');
+        console.log('    generic selector + type');
       }
-    ], 'DROPDOWN', 30000);
+    ], 'DROPDOWN', 20000);
 
-    // FORCE: Set hidden input value directly (bypass broken dropdown)
-    console.log('  [FORCE] Setting hidden input directly...');
-    await page.evaluate(() => {
-      const inp = document.querySelector('#login_input_type_01');
-      if (inp) {
-        const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        nativeSetter.call(inp, 'Internet');
-        inp.dispatchEvent(new Event('input', { bubbles: true }));
-        inp.dispatchEvent(new Event('change', { bubbles: true }));
-      }
-    });
-    await sleep(1000);
-    
-    // Verify it worked
-    const inputValue = await page.evaluate(() => {
-      const inp = document.querySelector('#login_input_type_01');
-      return inp ? inp.value : '(not found)';
-    });
-    console.log('  [FORCE] Result:', inputValue);
-    
-    if (!inputValue || inputValue.trim() === '') {
-      throw new Error('Failed to set dropdown value');
-    }
-    
     console.log('  [OK] Dropdown done\n');
 
     // Human-like pause before password
@@ -608,7 +539,6 @@ async function harvestQuota() {
     // ======================================
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown';
-
     for (let tick = 0; tick < 20; tick++) {
       const currentUrl = page.url();
       if (!currentUrl.includes('login')) {
@@ -616,77 +546,37 @@ async function harvestQuota() {
         console.log('  [OK] URL changed to:', currentUrl);
         break;
       }
-
-      // Check for captcha OR block message
       const pageState = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
         const text = document.body.innerText.toLowerCase();
         const hasCaptcha = !!modal || text.includes('verification') || text.includes('enter code');
-
-        // Detect WE block messages
         const isBlocked = text.includes('maximum') || text.includes('too many') ||
                           text.includes('exceeded') || text.includes('try again') ||
                           text.includes('blocked') || text.includes('محاولات') ||
                           text.includes('الحد الاقصى') || text.includes('مره اخرى');
-
-        // Detect login error messages (wrong password, invalid credentials, etc.)
-        const hasError = text.includes('invalid') || text.includes('incorrect') ||
-                         text.includes('wrong') || text.includes('error') ||
-                         text.includes('غلط') || text.includes('خطأ') ||
-                         text.includes('غير صحيح') || text.includes('غير صالح');
-
-        // Grab ALL visible error text from small elements
-        const errorEls = Array.from(document.querySelectorAll('.ant-form-item-explain, .ant-alert, [class*="error"], [class*="Error"]'));
-        const errorText = errorEls.map(el => el.innerText?.trim()).filter(Boolean).join(' | ');
-
-        return { hasCaptcha, isBlocked, hasError, errorText, text: text.slice(0, 300) };
+        return { hasCaptcha, isBlocked, text: text.slice(0, 200) };
       });
-
       if (pageState.isBlocked) {
         postLoginState = 'blocked';
         console.log('  [BLOCKED] WE has blocked this IP/account temporarily');
         console.log('  [BLOCKED] Page text:', pageState.text.slice(0, 150));
         break;
       }
-
       if (pageState.hasCaptcha) {
         postLoginState = 'captcha';
         console.log('  [CAPTCHA] Modal detected at', tick + 1, 'seconds');
         break;
       }
-
-      // Log any error messages detected on login page
-      if (pageState.hasError) {
-        console.log('  [ERROR DETECTED] Page has error text!');
-        console.log('  [ERROR] Error elements:', pageState.errorText || 'none found');
-        console.log('  [ERROR] Page text sample:', pageState.text.slice(0, 200));
-      }
-
       if (tick % 3 === 0) console.log('  Waiting...', tick + 1, 's');
       await sleep(1000);
     }
 
-    // Handle blocked state — clear cookies and exit cleanly (don't retry)
     if (postLoginState === 'blocked') {
       await clearCookies();
-      throw new Error('WE_BLOCKED: Account/IP temporarily blocked. Will auto-retry on next scheduled run (2h).');
+      throw new Error('WE_BLOCKED: Account/IP temporarily blocked. Will auto-retry on next scheduled run.');
     }
 
     if (postLoginState === 'unknown') {
-      // Final diagnostics before throwing
-      const finalDiag = await page.evaluate(() => {
-        const allText = document.body.innerText;
-        const errorEls = Array.from(document.querySelectorAll('.ant-form-item-explain, .ant-alert, [class*="error"], [class*="Error"], [class*="message"]'));
-        const errorText = errorEls.map(el => el.innerText?.trim()).filter(Boolean).join(' | ');
-        const inputs = Array.from(document.querySelectorAll('input')).map(i => ({
-          id: i.id, type: i.type, value: i.value ? '(filled)' : '(empty)', visible: i.offsetParent !== null
-        }));
-        return { errorText, inputs, textSample: allText.slice(0, 400) };
-      }).catch(() => null);
-
-      console.log('  [FINAL DIAG] Error elements:', finalDiag?.errorText || 'none');
-      console.log('  [FINAL DIAG] Inputs state:', JSON.stringify(finalDiag?.inputs));
-      console.log('  [FINAL DIAG] Page text:', finalDiag?.textSample);
       throw new Error('Still on login page - no navigation or captcha after 20s');
     }
 
@@ -696,23 +586,16 @@ async function harvestQuota() {
     if (postLoginState === 'captcha') {
       console.log('  [CAPTCHA] Ultimate Engine v4 starting...\n');
 
-      // HELPER: Find the captcha image (try multiple selectors)
+      // HELPER: Find the captcha image (largest img inside modal)
       async function findCaptchaImg() {
         return await page.evaluateHandle(() => {
-          // Try specific captcha image selectors first
-          let img = document.querySelector('.captcha-img, img[alt*="captcha"], img[alt*="Captcha"], img[src*="captcha"]');
-          if (img && img.naturalWidth > 0) return img;
-          
-          // Fallback: largest img inside modal
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return null;
-          
           const imgs = Array.from(modal.querySelectorAll('img'));
           imgs.sort((a, b) => {
             const aR = a.getBoundingClientRect(), bR = b.getBoundingClientRect();
             return (bR.width * bR.height) - (aR.width * aR.height);
           });
-          
           for (const img of imgs) {
             const r = img.getBoundingClientRect();
             if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
@@ -721,109 +604,61 @@ async function harvestQuota() {
         });
       }
 
-      // HELPER: Advanced canvas preprocessing - KILL BLUE LINE, KEEP TEXT
+      // HELPER: Canvas preprocessing with 3 filters tuned for WE captcha
       async function canvasProcess(imgHandle, filter) {
         return await page.evaluate((imgEl, f) => {
           if (!imgEl || !imgEl.naturalWidth) return null;
-          const scale = 4; // Higher scale for better OCR
+          const scale = 3;
           const c = document.createElement('canvas');
           c.width = imgEl.naturalWidth * scale;
           c.height = imgEl.naturalHeight * scale;
           const ctx = c.getContext('2d');
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(imgEl, 0, 0, c.width, c.height);
-
           const data = ctx.getImageData(0, 0, c.width, c.height);
           const d = data.data;
-
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
             let keep = false;
-
-            // BLUE LINE KILLER: Remove anything with high blue value
-            const isBlue = b > 100 && b > r + 20 && b > g + 20;
-            const isGray = Math.abs(r-g) < 20 && Math.abs(g-b) < 20 && Math.abs(r-b) < 20;
-            
-            if (isBlue || (isGray && r > 150)) {
-              // Kill blue line and gray background
-              keep = false;
-            } else if (f === 'redOnly') {
-              // Keep ONLY red text (kill blue line + everything else)
-              keep = r > 80 && (r - g) > 25 && (r - b) > 25;
-            } else if (f === 'redStrict') {
-              keep = r > 120 && (r - g) > 50 && (r - b) > 50 && !isBlue;
-            } else if (f === 'redWide') {
-              keep = r > 60 && (r - g) > 15 && (r - b) > 15 && !isBlue;
-            } else if (f === 'darkNoBlue') {
-              // Dark text but exclude blue
+            if (f === 'red') {
+              // Red isolation: keep reddish pixels, kill blue line + gray bg
+              keep = r > 100 && (r - g) > 30 && (r - b) > 30;
+            } else if (f === 'dark') {
+              // Dark text: keep anything with low luminance
               const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = lum < 140 && !isBlue;
-            } else if (f === 'darkStrictNoBlue') {
-              const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = lum < 100 && !isBlue;
-            } else if (f === 'redOrBlack') {
-              // Red OR black text, kill blue line
-              const lum = 0.299*r + 0.587*g + 0.114*b;
-              keep = ((r > 80 && r > g + 20) || lum < 120) && !isBlue;
-            } else if (f === 'antiBlue') {
-              // Anything NOT blue or gray
-              keep = !isBlue && !isGray;
-            } else if (f === 'colorOnly') {
-              // Keep colored pixels (red/orange), kill blue/gray
+              keep = lum < 140;
+            } else {
+              // Saturated: keep colored pixels, remove gray/white
               const max = Math.max(r,g,b), min = Math.min(r,g,b);
               const sat = max === 0 ? 0 : (max - min) / max;
-              keep = sat > 0.3 && r > b && !isBlue;
-            } else if (f === 'megaRed') {
-              // ULTRA aggressive red isolation
-              keep = r > 70 && r > g + 20 && r > b + 20 && b < 120;
-            } else if (f === 'notBlueNotGray') {
-              // Everything except blue line and gray background
-              keep = !isBlue && !(isGray && r > 140);
+              keep = sat > 0.3 && r > g;
             }
-
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
           }
-
           ctx.putImageData(data, 0, 0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
       }
 
-      // HELPER: OCR with multiple PSM modes + aggressive character correction
+      // HELPER: OCR with dual PSM modes
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
-
-        // Try 4 different PSM modes
-        const modes = ['8', '7', '6', '13'];
-        
-        for (const mode of modes) {
-          const r = await Tesseract.recognize(imageData, 'eng', {
+        const r1 = await Tesseract.recognize(imageData, 'eng', {
+          tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
+          tessedit_pageseg_mode: '8'
+        });
+        const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+        if (t1) results.push(t1);
+        if (t1.length !== 5) {
+          const r2 = await Tesseract.recognize(imageData, 'eng', {
             tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
-            tessedit_pageseg_mode: mode
+            tessedit_pageseg_mode: '7'
           });
-          let text = r.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
-          
-          // Aggressive character correction (blue line causes these confusions)
-          text = text.replace(/[|!l]/g, '1')        // | ! l → 1
-                     .replace(/[oO]/g, '0')         // O o → 0
-                     .replace(/[I]/g, '1')          // I → 1
-                     .replace(/[S]/g, '5')          // S → 5
-                     .replace(/[Z]/g, '2')          // Z → 2
-                     .replace(/[B]/g, '8')          // B → 8
-                     .replace(/[G]/g, '6')          // G → 6
-                     .replace(/[i]/g, '1')          // i → 1
-                     .replace(/[s]/g, '5')          // s → 5
-                     .replace(/[z]/g, '2')          // z → 2
-                     .replace(/[g]/g, '9')          // g → 9
-                     .replace(/[q]/g, '9');         // q → 9
-          
-          if (text && text.length >= 4 && text.length <= 6) {
-            results.push(text);
-          }
+          const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
+          if (t2 && t2 !== t1) results.push(t2);
         }
-
-        return [...new Set(results)]; // Remove duplicates
+        return results;
       }
 
       // HELPER: Submit captcha answer into modal input
@@ -832,10 +667,8 @@ async function harvestQuota() {
         const ok = await page.evaluate((ans) => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return false;
-
           const inp = modal.querySelector('input.ant-input, input[type="text"]');
           if (!inp) return false;
-
           inp.focus();
           inp.click();
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -844,19 +677,16 @@ async function harvestQuota() {
           setter.call(inp, ans);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-
           // Find the OK/confirm button — NOT Cancel. Look for button with ok/confirm text,
           // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
           const allBtns = Array.from(modal.querySelectorAll('button'));
           const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
                       modal.querySelector('button.ant-btn-primary') ||
                       allBtns[allBtns.length - 1]; // last button = OK
-
           console.log('[captcha] Clicking button:', btn ? btn.textContent.trim() : 'none', 'of', allBtns.length, 'buttons');
           if (btn) btn.click();
           return true;
         }, answer);
-
         if (!ok) {
           console.log('    -> Keyboard fallback');
           await page.keyboard.press('Tab');
@@ -865,7 +695,6 @@ async function harvestQuota() {
           await sleep(300);
           await page.keyboard.press('Enter');
         }
-
         await sleep(5000);
         return !page.url().includes('login');
       }
@@ -886,7 +715,6 @@ async function harvestQuota() {
           const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
           if (btn) btn.click();
         });
-
         // Wait for captcha modal to reappear
         for (let w = 0; w < 15; w++) {
           await sleep(1000);
@@ -899,19 +727,18 @@ async function harvestQuota() {
             await sleep(2000);
             return true;
           }
-
           // Check if we navigated away (login succeeded without captcha this time)
           if (!page.url().includes('login')) return false;
         }
         return false;
       }
 
-      // MAIN CAPTCHA LOOP - BLUE LINE KILLER EDITION
-      const FILTERS = ['redOnly', 'megaRed', 'redStrict', 'redWide', 'redOrBlack', 'antiBlue', 'darkNoBlue', 'colorOnly', 'darkStrictNoBlue', 'notBlueNotGray'];
+      // MAIN CAPTCHA LOOP (6 rounds — enough to solve, avoids IP block from too many attempts)
+      const FILTERS = ['red', 'dark', 'contrast'];
       let captchaSolved = false;
 
-      for (let round = 1; round <= 12 && !captchaSolved; round++) {
-        console.log('  -- Round', round, '/ 12 --');
+      for (let round = 1; round <= 6 && !captchaSolved; round++) {
+        console.log('  -- Round', round, '/ 6 --');
 
         // Wait for captcha modal to be present (it appears automatically after wrong answer)
         if (round > 1) {
@@ -920,7 +747,6 @@ async function harvestQuota() {
             await sleep(1000);
             const isOpen = await isModalOpen();
             if (isOpen) { modalFound = true; break; }
-
             // Check if login succeeded (navigated away)
             if (!page.url().includes('login')) {
               captchaSolved = true;
@@ -928,9 +754,7 @@ async function harvestQuota() {
               break;
             }
           }
-
           if (captchaSolved) break;
-
           if (!modalFound) {
             // Modal didn't appear - try clicking Login to trigger it
             console.log('    Modal not found, re-clicking Login...');
@@ -940,7 +764,6 @@ async function harvestQuota() {
               if (btn) btn.click();
             });
             await sleep(3000);
-
             const nowOpen = await isModalOpen();
             if (!nowOpen) {
               if (!page.url().includes('login')) { captchaSolved = true; break; }
@@ -948,105 +771,46 @@ async function harvestQuota() {
               continue;
             }
           }
-
           await sleep(1000); // Brief wait for new captcha image to load
         }
 
         try {
-          // Wait for valid captcha image (up to 15s - WE is slow)
+          // Wait for valid captcha image (up to 8s)
           let imgHandle = null;
-          for (let retry = 0; retry < 15; retry++) {
+          for (let retry = 0; retry < 8; retry++) {
             imgHandle = await findCaptchaImg();
             const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
             if (isValid) break;
             imgHandle = null;
             await sleep(1000);
           }
+          if (!imgHandle) { console.log('    ! No valid captcha image after 8s'); continue; }
 
-          if (!imgHandle) { console.log('    ! No valid captcha image after 15s'); continue; }
-
-          // STEP 1: Extract captcha and process with ALL filters
-          let allAnswers = [];
-          
-          console.log('    [ANALYSIS] Processing with all filters...');
+          // Try each filter until we get a 5-char result
+          let bestAnswer = '';
           for (const filter of FILTERS) {
             const b64 = await canvasProcess(imgHandle, filter);
             if (!b64) continue;
-
             const texts = await ocrRead(b64);
-            for (const text of texts) {
-              if (text.length >= 4 && text.length <= 6) {
-                allAnswers.push({filter, text, length: text.length});
-              }
-            }
-            console.log('      [' + filter + ']:', texts.length > 0 ? texts.join(', ') : 'nothing');
+            const match = texts.find(t => t.length === 5);
+            console.log('    [' + filter + '] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
+            if (match) { bestAnswer = match; break; }
           }
 
-          if (allAnswers.length === 0) {
-            console.log('    ! No valid answers from any filter');
+          if (!bestAnswer) {
+            console.log('    ! No 5-char result from any filter');
             continue;
           }
-
-          // STEP 2: Analyze and find consensus
-          console.log('\n    [CONSENSUS] Analyzing', allAnswers.length, 'candidates...');
-          
-          // Count frequency of each answer
-          const frequency = {};
-          allAnswers.forEach(a => {
-            const key = a.text.toLowerCase();
-            frequency[key] = (frequency[key] || 0) + 1;
-          });
-
-          // Find most common answer
-          let bestAnswer = '';
-          let maxCount = 0;
-          for (const [answer, count] of Object.entries(frequency)) {
-            console.log('      "' + answer + '" appeared', count, 'times');
-            if (count > maxCount || (count === maxCount && answer.length === 5)) {
-              maxCount = count;
-              bestAnswer = answer;
-            }
+          // One attempt per round — cycle through case variants across rounds
+          const variantIndex = (round - 1) % 3;
+          const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
+          console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
+          captchaSolved = await submitAnswer(attempt);
+          if (captchaSolved) {
+            console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
+          } else {
+            console.log('    X Wrong answer "' + attempt + '", next round...');
           }
-
-          // STEP 3: Apply case variants (try original case first, then variations)
-          const variants = [
-            bestAnswer,                    // original
-            bestAnswer.toUpperCase(),      // UPPER
-            bestAnswer.toLowerCase(),      // lower
-            bestAnswer[0].toUpperCase() + bestAnswer.slice(1).toLowerCase()  // Title
-          ];
-
-          // Remove duplicates
-          const uniqueVariants = [...new Set(variants)];
-
-          console.log('    [DECISION] Best answer:', bestAnswer, '(appeared', maxCount, 'times)');
-          console.log('    [VARIANTS] Will try:', uniqueVariants.join(', '));
-
-          // STEP 4: Try each variant until one works
-          let solved = false;
-          for (const attempt of uniqueVariants) {
-            console.log('    -> Submitting:', attempt);
-            solved = await submitAnswer(attempt);
-            
-            if (solved) {
-              console.log('  >>> CAPTCHA SOLVED with "' + attempt + '" on round', round, '! <<<');
-              captchaSolved = true;
-              break;
-            } else {
-              console.log('    X Wrong answer "' + attempt + '"');
-              
-              // Check if modal still open for next variant
-              await sleep(2000);
-              const stillOpen = await isModalOpen();
-              if (!stillOpen) {
-                console.log('    ! Modal closed, need new captcha');
-                break;
-              }
-            }
-          }
-
-          if (captchaSolved) break;
-
         } catch (e) {
           console.log('    ! Error:', e.message);
         }
@@ -1068,62 +832,59 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('  ✓ Login successful!\n');
 
-    // Save session cookies for next run (avoids login entirely if session still valid)
+    // Save session cookies for next run
     try {
       const cookies = await page.cookies();
       const relevantCookies = cookies.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
-      if (relevantCookies.length > 0) {
-        await saveCookies(relevantCookies);
-      }
+      if (relevantCookies.length > 0) await saveCookies(relevantCookies);
     } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
 
     } // end if (!sessionValid)
+
 
     // ══════════════════════════════════════
     console.log('STEP 5.5: LINE SWITCHER (Dokki)');
     // ══════════════════════════════════════
     console.log('  Switching to line 0237600094...');
 
+    // CRITICAL: The WE portal does a session refresh after line switch that can
+    // redirect back to #/login within seconds. The only reliable approach is to
+    // extract the data THE MOMENT we confirm the correct page is showing —
+    // before the redirect can happen. We capture data inside the switcher itself.
+
     // Helper: extract all quota data from the current page state
     async function extractNow() {
       const result = await page.evaluate(() => {
         const spans = Array.from(document.querySelectorAll('span, div, p'));
         let remaining = null, used = null, balance = null, plan = null;
-
         function isNumericText(t) {
           if (!t) return false;
           const s = t.replace(/,/g, '').trim();
           return /^\d+(\.\d+)?$/.test(s) && !s.startsWith('0237') && !s.startsWith('023');
         }
-
         for (let i = 0; i < spans.length; i++) {
           const t = spans[i].innerText?.trim();
           if (!t || t.length > 100) continue;
-
           if (t === 'Remaining') {
             for (let b = 1; b <= 3; b++) {
               const c = spans[i-b]?.innerText?.trim();
               if (isNumericText(c)) { remaining = c; break; }
             }
           }
-
           if (t === 'Used') {
             for (let b = 1; b <= 3; b++) {
               const c = spans[i-b]?.innerText?.trim();
               if (isNumericText(c)) { used = c; break; }
             }
           }
-
           if (t === 'Current Balance') {
             for (let f = 1; f <= 5; f++) {
               const c = spans[i+f]?.innerText?.trim();
               if (isNumericText(c)) { balance = c; break; }
             }
           }
-
           if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
         }
-
         if (!remaining) {
           // Fallback: regex on full page text
           const text = document.body.innerText;
@@ -1131,46 +892,49 @@ async function harvestQuota() {
           const u = text.match(/([\d,]+\.?\d+)\s*\n?\s*Used/i);
           const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i) || text.match(/([\d,]+\.?\d+)\s*EGP/i);
           const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
-
           if (!r) return null;
           return { remaining: r[1], used: u?.[1]||'0', balance: b?.[1]||'0', plan: p?.[0]?.trim()||'Unknown' };
         }
-
         return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
       });
-
       if (!result) return null;
-
       const parsed = {
         remaining: stripNum(result.remaining),
         used: stripNum(result.used) || 0,
         balance: stripNum(result.balance) || 0,
         plan: result.plan
       };
-
       return (parsed.remaining || parsed.remaining === 0) ? parsed : null;
     }
 
     // Helper: check page is showing correct line with actual data
+    // IMPORTANT: checks the ACTIVE line widget (top-left "You are currently managing")
+    // NOT just text.includes() which can false-positive from hidden dropdown options
     async function checkPage094() {
       return await page.evaluate(() => {
+        // Method 1: Check the active line widget specifically
+        // The "You are currently managing" shows the ACTIVE line number
         const activeEl = document.querySelector(
           '#accountOverview_currentNumber, .ant-select-selection-item, [class*="currentNumber"], [class*="current-number"]'
         );
         const activeText = activeEl ? activeEl.innerText?.trim() : '';
 
+        // Method 2: Check the small line number display near "You are currently managing"
         const managingEls = Array.from(document.querySelectorAll('span, div'));
         let managingLine = '';
         for (let i = 0; i < managingEls.length; i++) {
           const t = managingEls[i].innerText?.trim();
           if (t && t.includes('currently managing')) {
+            // The line number is usually in a nearby sibling or child
             const nearby = managingEls[i+1]?.innerText?.trim() || managingEls[i+2]?.innerText?.trim() || '';
             if (nearby.includes('023760009')) { managingLine = nearby; break; }
+            // Also check children
             const child = managingEls[i].querySelector('[class*="number"], [class*="select"]');
             if (child) { managingLine = child.innerText?.trim(); break; }
           }
         }
 
+        // Method 3: Look for 0237600094 specifically in small/label elements (not huge containers)
         let foundIn094Widget = false;
         for (const el of document.querySelectorAll('span, a, button, label, .ant-select-selection-item')) {
           const t = el.innerText?.trim();
@@ -1183,8 +947,9 @@ async function harvestQuota() {
         const rem = document.body.innerText.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i)?.[1] || '';
         const bal = document.body.innerText.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)?.[1]
                  || document.body.innerText.match(/([\d,]+\.?\d+)\s*EGP/i)?.[1] || '0';
-
         const balNum = parseFloat(bal.replace(/,/g, '')) || 0;
+
+        // Line 0237600094 has balance > 3000 EGP (line 0237600093 has ~1923 EGP)
         const isCorrectByBalance = balNum > 3000;
 
         const has094 = activeText.includes('0237600094') || managingLine.includes('0237600094') || foundIn094Widget || isCorrectByBalance;
@@ -1202,21 +967,26 @@ async function harvestQuota() {
       }).catch(() => ({ has094: false, activeText: '', managingLine: '', foundIn094Widget: false, isCorrectByBalance: false, balNum: 0, rem: '', hasRemaining: false }));
     }
 
+    // The captured data from inside the switcher (avoids race condition)
     let switcherCapturedData = null;
 
     await tryMethods([
+      // M1: Click dropdown → select 0237600094 → capture data immediately on confirmation
       async () => {
         await page.waitForFunction(() => {
           const t = document.body.innerText;
           return t.includes('currently managing') || t.includes('Remaining');
         }, { timeout: 15000 });
         await sleep(1500);
+        console.log('    Pre-switch URL:', page.url());
 
+        // Open the line switcher dropdown
         const dropdowns = await page.$$('.ant-select-selector, .ant-select');
         if (!dropdowns.length) throw new Error('Dropdown not found');
         await dropdowns[0].click();
         await sleep(1500);
 
+        // Click 0237600094
         const clicked = await page.evaluate(() => {
           const opts = Array.from(document.querySelectorAll(
             '.ant-select-item-option-content, .ant-select-item, li, option'
@@ -1225,178 +995,203 @@ async function harvestQuota() {
           if (t) { t.click(); return t.textContent.trim(); }
           return null;
         });
-
         if (!clicked) throw new Error('Option 0237600094 not found');
         console.log('    Clicked:', clicked);
 
+        // Poll aggressively — capture data THE MOMENT the page shows 0237600094 AND full data loaded
         for (let w = 0; w < 30; w++) {
           await sleep(1000);
           const url = page.url();
           const check = await checkPage094();
 
+          // If stuck on login after 5s, fail this method
           if (url.includes('#/login') && w > 5) throw new Error('Redirected to login after line switch');
 
+          // CRITICAL: Must satisfy ALL conditions for valid capture:
+          // 1. check.hasRemaining = true (data visible)
+          // 2. check.has094 = true (correct line showing)
+          // 3. balance > 3000 (line 94 has ~9856 EGP, line 93 has ~1923 EGP)
+          // 4. balance > 0 (data fully loaded, not still loading)
+          // 5. plan !== 'Unknown' (full page rendered)
+          // 6. remaining + used > 300 GB (line 94 = 750GB plan, line 93 = 250GB plan)
+          //    This catches mixed-state where balance updated but remaining/used still from line 93
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
             if (captured) {
               const totalGB = (captured.remaining || 0) + (captured.used || 0);
-
               if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
                 switcherCapturedData = captured;
                 console.log('    ✓ M1 FULL DATA CAPTURED: remaining=' + captured.remaining + ' used=' + captured.used + ' total=' + totalGB.toFixed(1) + 'GB balance=' + captured.balance + ' plan=' + captured.plan);
-                return;
+                return; // SUCCESS
+              } else if (captured.balance > 0 && captured.balance < 3000) {
+                console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093), waiting for 094...');
+              } else if (captured.balance === 0) {
+                console.log('    ⏳ (' + (w+1) + 's) Balance=0, page still loading... rem=' + captured.remaining);
+              } else if (captured.plan === 'Unknown') {
+                console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, page still rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+              } else if (totalGB <= 300) {
+                console.log('    ⚠ (' + (w+1) + 's) MIXED STATE: balance=' + captured.balance + ' (094✓) but rem+used=' + totalGB.toFixed(1) + 'GB (093 plan=250GB!) — waiting for full 094 data...');
+              } else {
+                console.log('    ⏳ (' + (w+1) + 's) Data incomplete, waiting... rem=' + captured.remaining + ' bal=' + captured.balance + ' total=' + totalGB.toFixed(1));
               }
+            } else {
+              console.log('    ⏳ (' + (w+1) + 's) extractNow returned null, waiting...');
             }
+          } else {
+            console.log('    ⏳ (' + (w+1) + 's) URL:' + url.split('#')[1] + ' | has094:' + check.has094 + ' | hasRem:' + check.hasRemaining + ' | bal:' + check.balNum);
           }
         }
-
-        throw new Error('M1: Page did not show line 94 FULL data in 30s');
+        throw new Error('M1: Page did not show line 94 FULL data (balance>3000, totalGB>300, plan loaded) in 30s');
       },
+
+      // M2: Broad evaluate click → same capture strategy
       async () => {
         await sleep(2000);
+        // Try all possible selectors for the dropdown
         await page.evaluate(() => {
+          // Try ant-select first
           const sel = document.querySelector('.ant-select-selector, .ant-select');
           if (sel) sel.click();
         });
         await sleep(1500);
-
+        // Click target line
         await page.evaluate(() => {
           for (const el of document.querySelectorAll('div, li, option, span, a, .ant-select-item')) {
             if (el.textContent && el.textContent.trim().includes('0237600094')) { el.click(); return; }
           }
         });
+        console.log('    Broad click done, waiting for page...');
 
+        // Same aggressive capture strategy with ALL verification criteria
         for (let w = 0; w < 25; w++) {
           await sleep(1000);
+          const url = page.url();
           const check = await checkPage094();
 
+          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+
+          // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
             const captured = await extractNow();
             if (captured) {
               const totalGB = (captured.remaining || 0) + (captured.used || 0);
-
               if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
                 switcherCapturedData = captured;
-                console.log('    ✓ M2 FULL DATA CAPTURED');
+                console.log('    ✓ M2 FULL DATA CAPTURED: remaining=' + captured.remaining + ' total=' + totalGB.toFixed(1) + 'GB balance=' + captured.balance);
                 return;
+              } else if (captured.balance > 0 && captured.balance < 3000) {
+                console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093)');
+              } else if (captured.balance === 0) {
+                console.log('    ⏳ (' + (w+1) + 's) Balance=0, loading... rem=' + captured.remaining);
+              } else if (captured.plan === 'Unknown') {
+                console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+              } else if (totalGB <= 300) {
+                console.log('    ⚠ (' + (w+1) + 's) MIXED STATE: balance=' + captured.balance + '✓ but total=' + totalGB.toFixed(1) + 'GB = 093 plan, waiting...');
               }
             }
+          } else {
+            console.log('    ⏳ (' + (w+1) + 's) rem:' + check.rem + ' | has094:' + check.has094 + ' | bal:' + check.balNum);
           }
         }
+        throw new Error('M2: Page did not show line 94 FULL data (balance>3000, totalGB>300, plan loaded) in 25s');
+      },
 
-        throw new Error('M2: Page did not show line 94 FULL data in 25s');
+      // M3: page.select() + capture
+      async () => {
+        await sleep(2000);
+        await page.select('select', '0237600094').catch(() => {});
+        for (let w = 0; w < 25; w++) {
+          await sleep(1000);
+          const url = page.url();
+          const check = await checkPage094();
+
+          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+
+          // ALL 6 conditions must be true for valid capture
+          if (check.hasRemaining && check.has094) {
+            const captured = await extractNow();
+            if (captured) {
+              const totalGB = (captured.remaining || 0) + (captured.used || 0);
+              if (captured.balance > 3000 && captured.balance > 0 && captured.plan !== 'Unknown' && totalGB > 300) {
+                switcherCapturedData = captured;
+                console.log('    ✓ M3 FULL DATA CAPTURED: remaining=' + captured.remaining + ' total=' + totalGB.toFixed(1) + 'GB balance=' + captured.balance);
+                return;
+              } else if (captured.balance > 0 && captured.balance < 3000) {
+                console.log('    ⚠ (' + (w+1) + 's) Balance ' + captured.balance + ' < 3000 — WRONG LINE (093)');
+              } else if (captured.balance === 0) {
+                console.log('    ⏳ (' + (w+1) + 's) Balance=0, loading... rem=' + captured.remaining);
+              } else if (captured.plan === 'Unknown') {
+                console.log('    ⏳ (' + (w+1) + 's) Plan=Unknown, rendering... rem=' + captured.remaining + ' bal=' + captured.balance);
+              } else if (totalGB <= 300) {
+                console.log('    ⚠ (' + (w+1) + 's) MIXED STATE: balance=' + captured.balance + '✓ but total=' + totalGB.toFixed(1) + 'GB = 093 plan, waiting...');
+              }
+            }
+          } else {
+            console.log('    ⏳ (' + (w+1) + 's) rem:' + check.rem + ' | has094:' + check.has094 + ' | bal:' + check.balNum);
+          }
+        }
+        throw new Error('M3: Page did not show line 94 FULL data (balance>3000, totalGB>300, plan loaded) in 25s');
       }
     ], 'LINE SWITCHER', 45000);
 
-    console.log('  ✓ Switched to 0237600094\n');
+    console.log('  ✓ Switched to 0237600094 | captured data:', switcherCapturedData ? 'YES' : 'NO');
+    console.log('  Current URL:', page.url(), '\n');
 
     // ══════════════════════════════════════
     console.log('STEP 6: EXTRACT');
     // ══════════════════════════════════════
 
-    const data = switcherCapturedData || await tryMethods([
-      // M1: Walk ALL spans/divs, find ones whose text is ONLY a decimal number,
-      // then check if a nearby sibling contains "Remaining" or "Used"
+    // Use pre-captured data from switcher if available (avoids race condition with redirect)
+    // Only fall through to live extraction if switcher didn't capture data
+    const data = switcherCapturedData ? await (async () => {
+      console.log('  [FAST PATH] Using data captured during line switch (race-condition safe)');
+      console.log('    M1 numeric-only sibling scan');
+      return switcherCapturedData;
+    })() : await tryMethods([
+      // M1: Walk ALL spans/divs — numeric sibling scan
       async () => {
         await sleep(2000);
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
-
-          // Helper: is this text a plain decimal number (with optional commas)?
           function isNumericText(t) {
             if (!t) return false;
-            const stripped = t.replace(/,/g, '').trim();
-            return /^\d+(\.\d+)?$/.test(stripped) && !stripped.startsWith('0237') && !stripped.startsWith('023');
+            const s = t.replace(/,/g, '').trim();
+            return /^\d+(\.\d+)?$/.test(s) && !s.startsWith('0237') && !s.startsWith('023');
           }
-
           for (let i = 0; i < spans.length; i++) {
             const t = spans[i].innerText?.trim();
             if (!t || t.length > 100) continue;
-
-            // Find "Remaining" label — check i-1, i-2 for the number
-            if (t === 'Remaining') {
-              for (let back = 1; back <= 3; back++) {
-                if (i - back >= 0) {
-                  const candidate = spans[i - back].innerText?.trim();
-                  if (isNumericText(candidate)) { remaining = candidate; break; }
-                }
-              }
-            }
-
-            // Find "Used" label — check i-1, i-2 for the number
-            if (t === 'Used') {
-              for (let back = 1; back <= 3; back++) {
-                if (i - back >= 0) {
-                  const candidate = spans[i - back].innerText?.trim();
-                  if (isNumericText(candidate)) { used = candidate; break; }
-                }
-              }
-            }
-
-            // Balance: "Current Balance" label then look forward for EGP number
-            if (t === 'Current Balance') {
-              for (let fwd = 1; fwd <= 5; fwd++) {
-                if (i + fwd < spans.length) {
-                  const candidate = spans[i + fwd].innerText?.trim();
-                  if (isNumericText(candidate)) { balance = candidate; break; }
-                }
-              }
-            }
-
-            // Plan: contains "GB" and "Speed"
+            if (t === 'Remaining') { for (let b=1;b<=3;b++) { const c=spans[i-b]?.innerText?.trim(); if(isNumericText(c)){remaining=c;break;} } }
+            if (t === 'Used')      { for (let b=1;b<=3;b++) { const c=spans[i-b]?.innerText?.trim(); if(isNumericText(c)){used=c;break;} } }
+            if (t === 'Current Balance') { for (let f=1;f<=5;f++) { const c=spans[i+f]?.innerText?.trim(); if(isNumericText(c)){balance=c;break;} } }
             if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
-
           if (!remaining) throw new Error('no remaining found');
           return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
         });
-
-        const parsed = {
-          remaining: stripNum(result.remaining),
-          used: stripNum(result.used) || 0,
-          balance: stripNum(result.balance) || 0,
-          plan: result.plan
-        };
-
+        const parsed = { remaining: stripNum(result.remaining), used: stripNum(result.used)||0, balance: stripNum(result.balance)||0, plan: result.plan };
         if (!parsed.remaining && parsed.remaining !== 0) throw new Error('no data after stripNum');
         console.log('    M1 numeric-only sibling scan');
         return parsed;
       },
-
-      // M2: innerText of whole page, regex number BEFORE label word (on same or adjacent line)
+      // M2: Full page text regex
       async () => {
         await sleep(5000);
         const result = await page.evaluate(() => {
           const text = document.body.innerText;
-          // The page renders: "1,391.34\nRemaining" or "1,391.34 Remaining"
           const r = text.match(/([\d,]+\.?\d+)\s*\n?\s*Remaining/i);
           const u = text.match(/([\d,]+\.?\d+)\s*\n?\s*Used/i);
-          const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)
-                 || text.match(/([\d,]+\.?\d+)\s*EGP/i);
+          const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i) || text.match(/([\d,]+\.?\d+)\s*EGP/i);
           const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
-
           if (!r) throw new Error('no remaining in page text');
-          return {
-            remaining: r[1],
-            used: u?.[1] || '0',
-            balance: b?.[1] || '0',
-            plan: p?.[0]?.trim() || 'Unknown'
-          };
+          return { remaining: r[1], used: u?.[1]||'0', balance: b?.[1]||'0', plan: p?.[0]?.trim()||'Unknown' };
         });
-
-        const parsed = {
-          remaining: stripNum(result.remaining),
-          used: stripNum(result.used) || 0,
-          balance: stripNum(result.balance) || 0,
-          plan: result.plan
-        };
-
+        const parsed = { remaining: stripNum(result.remaining), used: stripNum(result.used)||0, balance: stripNum(result.balance)||0, plan: result.plan };
         if (!parsed.remaining) throw new Error('no data M2');
-        console.log('    M2 page text regex number-before-label');
+        console.log('    M2 page text regex');
         return parsed;
       },
-
       // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
@@ -1404,14 +1199,8 @@ async function harvestQuota() {
         const r = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Remaining/i);
         const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
         const b = html.match(/>([\d,]+\.?\d+)\s*EGP</i);
-
         if (!r) throw new Error('no data in html');
-        return {
-          remaining: stripNum(r[1]),
-          used: stripNum(u?.[1]) || 0,
-          balance: stripNum(b?.[1]) || 0,
-          plan: 'Unknown'
-        };
+        return { remaining: stripNum(r[1]), used: stripNum(u?.[1])||0, balance: stripNum(b?.[1])||0, plan: 'Unknown' };
       }
     ], 'EXTRACT', 30000);
 
@@ -1507,8 +1296,8 @@ async function harvestQuota() {
     console.log('STEP 8.5: LOW QUOTA FLAG');
     // ══════════════════════════════════════
     // Write flag to Firestore quota_settings/alerts
-    // line104_low: true  → hourly workflow will run full harvest
-    // line104_low: false → hourly workflow will skip (normal 2h schedule handles it)
+    // dokki_low: true  → hourly workflow will run full harvest
+    // dokki_low: false → hourly workflow will skip (normal 2h schedule handles it)
     try {
       const isLowDokki = data.remaining < 100;
       const alertFields = {
@@ -1516,16 +1305,13 @@ async function harvestQuota() {
         dokki_quota:     { doubleValue: data.remaining },
         dokki_updatedAt: { stringValue: now }
       };
-
       const alertMask = 'updateMask.fieldPaths=dokki_low&updateMask.fieldPaths=dokki_quota&updateMask.fieldPaths=dokki_updatedAt';
       const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
-
       const alertRes = await fetch(alertUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: alertFields })
       });
-
       if (alertRes.ok) {
         console.log('  ✓ Low quota flag set: dokki_low=' + isLowDokki + ' (' + data.remaining.toFixed(1) + ' GB)\n');
       } else {
@@ -1534,6 +1320,8 @@ async function harvestQuota() {
     } catch(e) {
       console.log('  ⚠ Flag write error (non-critical):', e.message);
     }
+
+    // ══════════════════════════════════════
     console.log('STEP 9: TELEGRAM');
     // ══════════════════════════════════════
     try {
@@ -1556,9 +1344,9 @@ async function harvestQuota() {
       const msg = [
         '📡 *Cairo Taj — Dokki Harvest*',
         '',
-        `${statusIcon} Quota Remaining: ${rem.toFixed(2)} GB`,
-        `📉 Used: ${data.used.toFixed(2)} GB`,
-        `💰 Balance: ${data.balance.toFixed(2)} EGP`,
+        `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
+        `📉 Used: *${data.used.toFixed(2)} GB*`,
+        `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
         `📋 Plan: ${data.plan}`,
         `🕐 ${date}`,
         `🤖 GitHub Cloud ⚡ Dokki` + alertLine
@@ -1581,7 +1369,6 @@ async function harvestQuota() {
         if (tgRes.ok) { tgSuccess = true; }
         else { console.log('  ⚠ Telegram to ' + chatId + ': HTTP ' + tgRes.status); }
       }
-
       if (!tgSuccess) throw new Error('All Telegram sends failed');
       console.log('  ✓ Telegram sent!\n');
 
@@ -1589,11 +1376,10 @@ async function harvestQuota() {
       if (rem < 30) {
         const criticalMsg = {
           text: ['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Dokki*',
-            `📉 Only ${rem.toFixed(2)} GB remaining!`, '🔴 *ACTION REQUIRED: Recharge immediately!*', '', `🕐 ${date}`].join('\n'),
+            `📉 Only *${rem.toFixed(2)} GB* remaining!`, '🔴 *ACTION REQUIRED: Recharge immediately!*', '', `🕐 ${date}`].join('\n'),
           parse_mode: 'Markdown',
           disable_notification: false
         };
-
         for (const chatId of recipients) {
           if (!chatId) continue;
           await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1606,7 +1392,6 @@ async function harvestQuota() {
       // Telegram failure should NOT fail the whole harvest
       console.log('  ⚠ Telegram failed (non-critical):', e.message);
     }
-
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1640,14 +1425,11 @@ async function main() {
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
-
-      // If WE blocked us, don't retry — it will make things worse
       if (error.message && error.message.includes('WE_BLOCKED')) {
-        console.error('⛔ WE block detected — stopping all retries to avoid extending the block period');
+        console.error('⛔ WE block detected — stopping all retries to avoid extending the block');
         console.error('💀 Will retry on next scheduled run automatically');
         process.exit(1);
       }
-
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
