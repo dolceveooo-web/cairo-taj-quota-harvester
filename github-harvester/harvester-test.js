@@ -592,22 +592,56 @@ async function harvestQuota() {
     if (postLoginState === 'captcha') {
       console.log('  [CAPTCHA] EXTREME Engine v5 - 13 filters + consensus voting\n');
 
-      // HELPER: Find captcha image - tries multiple selectors
+      // HELPER: Find captcha image - tries multiple selectors + debugging
       async function findCaptchaImg() {
         return await page.evaluateHandle(() => {
-          const specific = document.querySelector('.captcha-img, img[alt*="captcha"], img[alt*="Captcha"], img[src*="captcha"], img[src*="verify"]');
-          if (specific && specific.naturalWidth > 0) return specific;
-          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
-          if (!modal) return null;
-          const imgs = Array.from(modal.querySelectorAll('img'));
+          // Try specific captcha selectors first
+          const specific = document.querySelector('.captcha-img, img[alt*="captcha"], img[alt*="Captcha"], img[src*="captcha"], img[src*="verify"], img[src*="code"]');
+          if (specific && specific.naturalWidth > 0) {
+            console.log('[IMG] Found via specific selector:', specific.src?.slice(0,50));
+            return specific;
+          }
+          
+          // Find modal first
+          const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="Modal"]');
+          if (!modal) {
+            console.log('[IMG] No modal found!');
+            return null;
+          }
+          
+          // Log all images in modal for debugging
+          const allImgs = Array.from(modal.querySelectorAll('img'));
+          console.log('[IMG] Found', allImgs.length, 'images in modal');
+          allImgs.forEach((img, i) => {
+            const r = img.getBoundingClientRect();
+            console.log(`[IMG ${i}] src=${img.src?.slice(0,40)} size=${r.width}x${r.height} natural=${img.naturalWidth}x${img.naturalHeight} visible=${img.offsetParent!==null}`);
+          });
+          
+          // Sort by size and find largest valid image
+          const imgs = allImgs.filter(img => {
+            const r = img.getBoundingClientRect();
+            return r.width > 50 && r.height > 20 && img.offsetParent !== null;
+          });
+          
           imgs.sort((a, b) => {
             const aR = a.getBoundingClientRect(), bR = b.getBoundingClientRect();
             return (bR.width * bR.height) - (aR.width * aR.height);
           });
+          
           for (const img of imgs) {
+            // Wait a bit for image to load if naturalWidth is 0
+            if (img.naturalWidth === 0) {
+              console.log('[IMG] Image not loaded yet, src:', img.src?.slice(0,40));
+              continue;
+            }
             const r = img.getBoundingClientRect();
-            if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) return img;
+            if (r.width > 80 && r.height > 25 && img.naturalWidth > 0) {
+              console.log('[IMG] Selected image:', img.src?.slice(0,50), `size=${r.width}x${r.height}`);
+              return img;
+            }
           }
+          
+          console.log('[IMG] No valid image found after filtering');
           return null;
         });
       }
@@ -764,15 +798,25 @@ async function harvestQuota() {
         }
 
         try {
-          // Wait up to 15s for captcha image
+          // Wait up to 15s for captcha image WITH LONGER RETRIES
           let imgHandle = null;
-          for (let retry = 0; retry < 15; retry++) {
+          for (let retry = 0; retry < 30; retry++) {
             imgHandle = await findCaptchaImg();
             const isValid = await page.evaluate(el => el && el.naturalWidth > 0, imgHandle).catch(() => false);
             if (isValid) break;
-            imgHandle = null; await sleep(1000);
+            imgHandle = null; 
+            await sleep(500); // Check every 500ms instead of 1s
           }
-          if (!imgHandle) { console.log('    ! No valid captcha image after 15s'); continue; }
+          if (!imgHandle) { 
+            console.log('    ! No valid captcha image after 15s');
+            // Dump modal HTML for debugging
+            const modalHtml = await page.evaluate(() => {
+              const m = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
+              return m ? m.innerHTML.slice(0, 500) : 'NO MODAL';
+            });
+            console.log('    [DEBUG] Modal HTML:', modalHtml);
+            continue; 
+          }
 
           // STUDY: Process with all 13 filters
           let allAnswers = [];
