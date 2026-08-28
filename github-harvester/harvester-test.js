@@ -1,6 +1,7 @@
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 const fetch = require('node-fetch');
+
 puppeteer.use(StealthPlugin());
 
 const FIREBASE_API_KEY = process.env.FIREBASE_API_KEY;
@@ -9,7 +10,7 @@ const WE_USERNAME = process.env.WE_USERNAME;
 const WE_PASSWORD = process.env.WE_PASSWORD;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const TELEGRAM_GROUP_ID = process.env.TELEGRAM_GROUP_ID;
+const TELEGRAM_GROUP_ID = process.env.TELEGRAM_GROUP_ID; // Group chat for colleague
 const MAX_RETRIES = 3;
 
 async function sleep(ms) {
@@ -56,7 +57,6 @@ async function harvestQuota() {
   // ── Session Cookie Helpers ─────────────────────────────────────────────────
   // Save/load cookies via Firestore so we can skip login when session is still valid
   // Cookies stored in quota_settings/session_104 as a JSON string
-
   async function loadSavedCookies() {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
@@ -99,7 +99,6 @@ async function harvestQuota() {
       console.log('  [SESSION] Cookies cleared from Firestore');
     } catch(e) {}
   }
-
   // ──────────────────────────────────────────────────────────────────────────
 
   try {
@@ -153,7 +152,6 @@ async function harvestQuota() {
     console.log('STEP 0: SESSION CHECK');
     let sessionValid = false;
     const savedCookies = await loadSavedCookies();
-
     if (savedCookies && savedCookies.length > 0) {
       try {
         console.log('  Trying saved session cookies...');
@@ -235,7 +233,6 @@ async function harvestQuota() {
         bodyLen: document.body.innerHTML.length
       };
     }), 10000, 'diagnostics');
-
     console.log('  URL:', diag.url);
     console.log('  Inputs found:', diag.inputCount);
     console.log('  .ant-select:', diag.hasAntSelect, ' .ant-input:', diag.hasAntInput);
@@ -546,7 +543,6 @@ async function harvestQuota() {
     // ======================================
     console.log('  Waiting for login result...');
     let postLoginState = 'unknown';
-
     for (let tick = 0; tick < 20; tick++) {
       const currentUrl = page.url();
       if (!currentUrl.includes('login')) {
@@ -554,19 +550,16 @@ async function harvestQuota() {
         console.log('  [OK] URL changed to:', currentUrl);
         break;
       }
-
       // Check for captcha OR block message
       const pageState = await page.evaluate(() => {
         const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"], [class*="verification"]');
         const text = document.body.innerText.toLowerCase();
         const hasCaptcha = !!modal || text.includes('verification') || text.includes('enter code');
-
         // Detect WE block messages
         const isBlocked = text.includes('maximum') || text.includes('too many') ||
                           text.includes('exceeded') || text.includes('try again') ||
                           text.includes('blocked') || text.includes('محاولات') ||
                           text.includes('الحد الاقصى') || text.includes('مره اخرى');
-
         return { hasCaptcha, isBlocked, text: text.slice(0, 200) };
       });
 
@@ -576,13 +569,11 @@ async function harvestQuota() {
         console.log('  [BLOCKED] Page text:', pageState.text.slice(0, 150));
         break;
       }
-
       if (pageState.hasCaptcha) {
         postLoginState = 'captcha';
         console.log('  [CAPTCHA] Modal detected at', tick + 1, 'seconds');
         break;
       }
-
       if (tick % 3 === 0) console.log('  Waiting...', tick + 1, 's');
       await sleep(1000);
     }
@@ -632,14 +623,11 @@ async function harvestQuota() {
           const ctx = c.getContext('2d');
           ctx.imageSmoothingEnabled = false;
           ctx.drawImage(imgEl, 0, 0, c.width, c.height);
-
           const data = ctx.getImageData(0, 0, c.width, c.height);
           const d = data.data;
-
           for (let i = 0; i < d.length; i += 4) {
             const r = d[i], g = d[i+1], b = d[i+2];
             let keep = false;
-
             if (f === 'red') {
               // Red isolation: keep reddish pixels, kill blue line + gray bg
               keep = r > 100 && (r - g) > 30 && (r - b) > 30;
@@ -653,10 +641,8 @@ async function harvestQuota() {
               const sat = max === 0 ? 0 : (max - min) / max;
               keep = sat > 0.3 && r > g;
             }
-
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
           }
-
           ctx.putImageData(data, 0, 0);
           return c.toDataURL('image/png');
         }, imgHandle, filter);
@@ -666,14 +652,12 @@ async function harvestQuota() {
       async function ocrRead(imageData) {
         const Tesseract = require('tesseract.js');
         const results = [];
-
         const r1 = await Tesseract.recognize(imageData, 'eng', {
           tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
           tessedit_pageseg_mode: '8'
         });
         const t1 = r1.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
         if (t1) results.push(t1);
-
         if (t1.length !== 5) {
           const r2 = await Tesseract.recognize(imageData, 'eng', {
             tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789',
@@ -682,7 +666,6 @@ async function harvestQuota() {
           const t2 = r2.data.text.replace(/[^A-Za-z0-9]/g, '').trim();
           if (t2 && t2 !== t1) results.push(t2);
         }
-
         return results;
       }
 
@@ -692,10 +675,8 @@ async function harvestQuota() {
         const ok = await page.evaluate((ans) => {
           const modal = document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]');
           if (!modal) return false;
-
           const inp = modal.querySelector('input.ant-input, input[type="text"]');
           if (!inp) return false;
-
           inp.focus();
           inp.click();
           const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
@@ -704,19 +685,16 @@ async function harvestQuota() {
           setter.call(inp, ans);
           inp.dispatchEvent(new Event('input', { bubbles: true }));
           inp.dispatchEvent(new Event('change', { bubbles: true }));
-
           // Find the OK/confirm button — NOT Cancel. Look for button with ok/confirm text,
           // or ant-btn-primary class, or the LAST button (Cancel is usually first, Ok is last)
           const allBtns = Array.from(modal.querySelectorAll('button'));
           const btn = allBtns.find(b => /ok|confirm|submit/i.test(b.textContent)) ||
                       modal.querySelector('button.ant-btn-primary') ||
                       allBtns[allBtns.length - 1]; // last button = OK
-
           console.log('[captcha] Clicking button:', btn ? btn.textContent.trim() : 'none', 'of', allBtns.length, 'buttons');
           if (btn) btn.click();
           return true;
         }, answer);
-
         if (!ok) {
           console.log('    -> Keyboard fallback');
           await page.keyboard.press('Tab');
@@ -725,7 +703,6 @@ async function harvestQuota() {
           await sleep(300);
           await page.keyboard.press('Enter');
         }
-
         await sleep(5000);
         return !page.url().includes('login');
       }
@@ -746,7 +723,6 @@ async function harvestQuota() {
           const btn = btns.find(b => b.textContent.toLowerCase().includes('login') || b.className.includes('primary'));
           if (btn) btn.click();
         });
-
         // Wait for captcha modal to reappear
         for (let w = 0; w < 15; w++) {
           await sleep(1000);
@@ -759,7 +735,6 @@ async function harvestQuota() {
             await sleep(2000);
             return true;
           }
-
           // Check if we navigated away (login succeeded without captcha this time)
           if (!page.url().includes('login')) return false;
         }
@@ -780,7 +755,6 @@ async function harvestQuota() {
             await sleep(1000);
             const isOpen = await isModalOpen();
             if (isOpen) { modalFound = true; break; }
-
             // Check if login succeeded (navigated away)
             if (!page.url().includes('login')) {
               captchaSolved = true;
@@ -788,9 +762,7 @@ async function harvestQuota() {
               break;
             }
           }
-
           if (captchaSolved) break;
-
           if (!modalFound) {
             // Modal didn't appear - try clicking Login to trigger it
             console.log('    Modal not found, re-clicking Login...');
@@ -800,7 +772,6 @@ async function harvestQuota() {
               if (btn) btn.click();
             });
             await sleep(3000);
-
             const nowOpen = await isModalOpen();
             if (!nowOpen) {
               if (!page.url().includes('login')) { captchaSolved = true; break; }
@@ -808,7 +779,6 @@ async function harvestQuota() {
               continue;
             }
           }
-
           await sleep(1000); // Brief wait for new captcha image to load
         }
 
@@ -822,7 +792,6 @@ async function harvestQuota() {
             imgHandle = null;
             await sleep(1000);
           }
-
           if (!imgHandle) { console.log('    ! No valid captcha image after 8s'); continue; }
 
           // Try each filter until we get a 5-char result
@@ -830,11 +799,9 @@ async function harvestQuota() {
           for (const filter of FILTERS) {
             const b64 = await canvasProcess(imgHandle, filter);
             if (!b64) continue;
-
             const texts = await ocrRead(b64);
             const match = texts.find(t => t.length === 5);
             console.log('    [' + filter + '] OCR:', JSON.stringify(texts), match ? '[OK]' : '[SKIP]');
-
             if (match) { bestAnswer = match; break; }
           }
 
@@ -842,20 +809,16 @@ async function harvestQuota() {
             console.log('    ! No 5-char result from any filter');
             continue;
           }
-
           // One attempt per round — cycle through case variants across rounds
           const variantIndex = (round - 1) % 3;
           const attempt = variantIndex === 1 ? bestAnswer.toUpperCase() : variantIndex === 2 ? bestAnswer.toLowerCase() : bestAnswer;
-
           console.log('    -> Trying [' + ['orig','UPPER','lower'][variantIndex] + ']:', attempt);
           captchaSolved = await submitAnswer(attempt);
-
           if (captchaSolved) {
             console.log('  >>> CAPTCHA SOLVED on round', round, '! <<<');
           } else {
             console.log('    X Wrong answer "' + attempt + '", next round...');
           }
-
         } catch (e) {
           console.log('    ! Error:', e.message);
         }
@@ -896,6 +859,15 @@ async function harvestQuota() {
       // then check if a nearby sibling contains "Remaining" or "Used"
       async () => {
         await sleep(2000);
+        // Wait for balance card to load (extra wait if balance not yet visible)
+        await withTimeout(
+          page.waitForFunction(() => {
+            const text = document.body.innerText;
+            return text.includes('Current Balance') && /[\d,]+\.?\d+\s*EGP/.test(text);
+          }, { timeout: 8000 }),
+          9000, 'balance card wait'
+        ).catch(() => console.log('    [WARN] Balance card slow, proceeding anyway'));
+
         const result = await page.evaluate(() => {
           const spans = Array.from(document.querySelectorAll('span, div, p'));
           let remaining = null, used = null, balance = null, plan = null;
@@ -933,7 +905,7 @@ async function harvestQuota() {
 
             // Balance: "Current Balance" label then look forward for EGP number
             if (t === 'Current Balance') {
-              for (let fwd = 1; fwd <= 5; fwd++) {
+              for (let fwd = 1; fwd <= 8; fwd++) {
                 if (i + fwd < spans.length) {
                   const candidate = spans[i + fwd].innerText?.trim();
                   if (isNumericText(candidate)) { balance = candidate; break; }
@@ -945,22 +917,27 @@ async function harvestQuota() {
             if (t.includes('GB') && t.toLowerCase().includes('speed')) plan = t;
           }
 
+          // Fallback: if balance still not found, try regex on full page text
+          if (!balance) {
+            const text = document.body.innerText;
+            const bMatch = text.match(/Current Balance\s*[\n\r\s]*([\d,]+\.?\d+)/i)
+                        || text.match(/([\d,]+\.?\d+)\s*EGP/i);
+            if (bMatch) balance = bMatch[1];
+          }
+
           if (!remaining) throw new Error('no remaining found');
           return { remaining, used: used||'0', balance: balance||'0', plan: plan||'Unknown' };
         });
-
         const parsed = {
           remaining: stripNum(result.remaining),
           used: stripNum(result.used) || 0,
           balance: stripNum(result.balance) || 0,
           plan: result.plan
         };
-
         if (!parsed.remaining && parsed.remaining !== 0) throw new Error('no data after stripNum');
         console.log('    M1 numeric-only sibling scan');
         return parsed;
       },
-
       // M2: innerText of whole page, regex number BEFORE label word (on same or adjacent line)
       async () => {
         await sleep(5000);
@@ -972,7 +949,6 @@ async function harvestQuota() {
           const b = text.match(/Current Balance\s*\n?\s*([\d,]+\.?\d+)/i)
                  || text.match(/([\d,]+\.?\d+)\s*EGP/i);
           const p = text.match(/[^\n]*\d+\s*GB[^\n]*[Ss]peed[^\n]*/);
-
           if (!r) throw new Error('no remaining in page text');
           return {
             remaining: r[1],
@@ -981,19 +957,16 @@ async function harvestQuota() {
             plan: p?.[0]?.trim() || 'Unknown'
           };
         });
-
         const parsed = {
           remaining: stripNum(result.remaining),
           used: stripNum(result.used) || 0,
           balance: stripNum(result.balance) || 0,
           plan: result.plan
         };
-
         if (!parsed.remaining) throw new Error('no data M2');
         console.log('    M2 page text regex number-before-label');
         return parsed;
       },
-
       // M3: HTML source regex fallback
       async () => {
         await sleep(8000);
@@ -1001,7 +974,6 @@ async function harvestQuota() {
         const r = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Remaining/i);
         const u = html.match(/>([\d,]+\.?\d+)<[^>]*>\s*(?:<[^>]*>)*\s*Used/i);
         const b = html.match(/>([\d,]+\.?\d+)\s*EGP</i);
-
         if (!r) throw new Error('no data in html');
         return {
           remaining: stripNum(r[1]),
@@ -1113,16 +1085,13 @@ async function harvestQuota() {
         line104_quota: { doubleValue: data.remaining },
         line104_updatedAt: { stringValue: now }
       };
-
       const alertMask = 'updateMask.fieldPaths=line104_low&updateMask.fieldPaths=line104_quota&updateMask.fieldPaths=line104_updatedAt';
       const alertUrl = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/alerts?key=${FIREBASE_API_KEY}&${alertMask}`;
-
       const alertRes = await fetch(alertUrl, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: alertFields })
       });
-
       if (alertRes.ok) {
         console.log('  ✓ Low quota flag set: line104_low=' + isLow104 + ' (' + data.remaining.toFixed(1) + ' GB)\n');
       } else {
@@ -1153,9 +1122,9 @@ async function harvestQuota() {
       const msg = [
         '📡 *Cairo Taj — Line 104 Harvest*',
         '',
-        `${statusIcon} Quota Remaining: ${rem.toFixed(2)} GB`,
-        `📉 Used: ${data.used.toFixed(2)} GB`,
-        `💰 Balance: ${data.balance.toFixed(2)} EGP`,
+        `${statusIcon} Quota Remaining: *${rem.toFixed(2)} GB*`,
+        `📉 Used: *${data.used.toFixed(2)} GB*`,
+        `💰 Balance: *${data.balance.toFixed(2)} EGP*`,
         `📋 Plan: ${data.plan}`,
         `🕐 ${date}`,
         `🤖 GitHub Cloud ⚡` + alertLine
@@ -1178,19 +1147,18 @@ async function harvestQuota() {
         if (tgRes.ok) { tgSuccess = true; }
         else { console.log('  ⚠ Telegram to ' + chatId + ': HTTP ' + tgRes.status); }
       }
-
       if (!tgSuccess) throw new Error('All Telegram sends failed');
       console.log('  ✓ Telegram sent!\n');
 
       // CRITICAL ALERT: Under 30 GB — send a separate urgent message
+      // This triggers a second notification/ringtone on the phone
       if (rem < 30) {
         const criticalMsg = {
           text: ['🚨🚨🚨 *CRITICAL QUOTA ALERT* 🚨🚨🚨', '', '⚠️ *Cairo Taj — Line 104*',
-            `📉 Only ${rem.toFixed(2)} GB remaining!`, '🔴 *ACTION REQUIRED: Recharge immediately!*', '', `🕐 ${date}`].join('\n'),
+            `📉 Only *${rem.toFixed(2)} GB* remaining!`, '🔴 *ACTION REQUIRED: Recharge immediately!*', '', `🕐 ${date}`].join('\n'),
           parse_mode: 'Markdown',
           disable_notification: false
         };
-
         for (const chatId of recipients) {
           if (!chatId) continue;
           await fetch(tgUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1203,7 +1171,6 @@ async function harvestQuota() {
       // Telegram failure should NOT fail the whole harvest
       console.log('  ⚠ Telegram failed (non-critical):', e.message);
     }
-
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('✅ ✅ ✅  SUCCESS  ✅ ✅ ✅');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -1237,14 +1204,12 @@ async function main() {
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
-
       // If WE blocked us, don't retry — it will make things worse
       if (error.message && error.message.includes('WE_BLOCKED')) {
         console.error('⛔ WE block detected — stopping all retries to avoid extending the block period');
         console.error('💀 Will retry on next scheduled run automatically');
         process.exit(1);
       }
-
       if (attempt < MAX_RETRIES) {
         const d = randomDelay(30000, 45000);
         console.log(`Retrying in ${Math.floor(d/1000)}s...`);
