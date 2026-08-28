@@ -598,26 +598,49 @@ async function harvestQuota() {
         return { hasCaptcha, isTermsModal, isBlocked, text: text.slice(0, 200) };
       });
       
-      // Handle Terms & Conditions modal - close it and retry login
+      // Handle Terms & Conditions modal - must ACCEPT it, not just close
       if (pageState.isTermsModal) {
-        console.log('  [T&C] Terms & Conditions modal detected, closing...');
-        await page.evaluate(() => {
-          const closeBtn = document.querySelector('#close-terms, .modal .close, [aria-label="Close"]');
-          if (closeBtn) closeBtn.click();
-        }).catch(() => {});
+        console.log('  [T&C] Terms & Conditions modal detected, accepting...');
+        const accepted = await page.evaluate(() => {
+          const modal = document.querySelector('.modal.show, .modal[style*="display: block"], .modal[style*="display:block"]') 
+                     || document.querySelector('.TC-content')?.closest('.modal')
+                     || document.querySelector('#close-terms')?.closest('.modal');
+          if (!modal) return false;
+
+          // Scroll modal to bottom first (some T&C require scroll before accept)
+          const body = modal.querySelector('.modal-body, .modal-dialog-scrollable .modal-body');
+          if (body) body.scrollTop = body.scrollHeight;
+
+          // Try to find Accept/Agree/Confirm button (NOT close/dismiss)
+          const allBtns = Array.from(modal.querySelectorAll('button, a.btn, input[type="button"]'));
+          console.log('[T&C] Buttons found:', allBtns.map(b => b.id + '|' + b.textContent?.trim().slice(0,30)).join(' | '));
+
+          const acceptBtn = allBtns.find(b => {
+            const txt = (b.textContent || b.value || b.id || '').toLowerCase().trim();
+            return txt.includes('accept') || txt.includes('agree') || txt.includes('confirm') 
+                || txt.includes('ok') || txt.includes('continue') || txt.includes('proceed')
+                || txt.includes('موافق') || txt.includes('قبول') || txt.includes('اوافق');
+          });
+
+          if (acceptBtn) {
+            console.log('[T&C] Clicking accept button:', acceptBtn.textContent?.trim().slice(0,30));
+            acceptBtn.click();
+            return true;
+          }
+
+          // No accept button found - try close button as last resort
+          const closeBtn = modal.querySelector('#close-terms, .close, [aria-label="Close"]');
+          if (closeBtn) {
+            console.log('[T&C] No accept btn found, using close button');
+            closeBtn.click();
+            return true;
+          }
+          return false;
+        }).catch(() => false);
+
+        console.log('  [T&C] Accept action result:', accepted);
         await sleep(2000);
-        
-        // Check if we're still on login page after closing T&C
-        const stillOnLogin = page.url().includes('login');
-        if (stillOnLogin) {
-          console.log('  [T&C] Closed T&C, retrying login submit...');
-          // Re-click login button
-          await page.evaluate(() => {
-            const loginBtn = document.querySelector('button[type="submit"], .ant-btn-primary, button.submit');
-            if (loginBtn) loginBtn.click();
-          }).catch(() => {});
-        }
-        continue; // Continue waiting loop
+        continue; // Continue waiting loop - do NOT re-click submit
       }
       
       if (pageState.isBlocked) {
