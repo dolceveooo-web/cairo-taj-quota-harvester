@@ -11,7 +11,7 @@ const WE_PASSWORD = process.env.WE_PASSWORD;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const TELEGRAM_GROUP_ID = process.env.TELEGRAM_GROUP_ID; // Group chat for colleague
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 7;
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -54,49 +54,59 @@ async function harvestQuota() {
   console.log('🚀 STARTING...\n');
   let browser, page;
 
-  // ── Session Cookie Helpers ─────────────────────────────────────────────────
-  // Save/load cookies via Firestore so we can skip login when session is still valid
-  // Cookies stored in quota_settings/session_104 as a JSON string
-  async function loadSavedCookies() {
+  // ── Session Management: Save/Load ALL session data ────────────────────────
+  // Saves: cookies, localStorage, sessionStorage, tokens
+  // This allows skipping login entirely when session is still valid
+  
+  // ── Session Management ─────────────────────────────────────────────────────
+  async function loadSavedSession() {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
       const res = await fetch(url);
-      if (!res.ok) return null;
+      if (!res.ok) { console.log('  [SESSION] Firestore fetch failed:', res.status); return null; }
       const doc = await res.json();
       const cookieStr = doc?.fields?.cookies?.stringValue;
+      const localStr = doc?.fields?.localStorage?.stringValue;
+      const sessionStr = doc?.fields?.sessionStorage?.stringValue;
       const savedAt = doc?.fields?.savedAt?.stringValue;
-      if (!cookieStr || !savedAt) return null;
-      // Only use cookies saved within last 4 hours
+      if (!cookieStr || !savedAt) { console.log('  [SESSION] No session data in Firestore'); return null; }
       const age = Date.now() - new Date(savedAt).getTime();
-      if (age > 4 * 60 * 60 * 1000) { console.log('  [SESSION] Cookies expired (>4h old), will do fresh login'); return null; }
-      console.log('  [SESSION] Found saved cookies (' + Math.floor(age/60000) + 'm old)');
-      return JSON.parse(cookieStr);
-    } catch(e) { console.log('  [SESSION] Could not load cookies:', e.message); return null; }
+      if (age > 8 * 60 * 60 * 1000) { console.log('  [SESSION] Session expired (>8h old), fresh login'); return null; }
+      const parsed = {
+        cookies: JSON.parse(cookieStr),
+        localStorage: localStr ? JSON.parse(localStr) : {},
+        sessionStorage: sessionStr ? JSON.parse(sessionStr) : {},
+        age: Math.floor(age / 60000)
+      };
+      console.log(`  [SESSION] Found saved session (${parsed.age}m old) - cookies:${parsed.cookies.length} localStorage:${Object.keys(parsed.localStorage).length} sessionStorage:${Object.keys(parsed.sessionStorage).length}`);
+      return parsed;
+    } catch(e) { console.log('  [SESSION] Load error:', e.message); return null; }
   }
 
-  async function saveCookies(cookies) {
+  async function saveSession(cookies, localData, sessionData) {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
       await fetch(url, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fields: {
-          cookies:  { stringValue: JSON.stringify(cookies) },
-          savedAt:  { stringValue: new Date().toISOString() },
-          line:     { stringValue: '104' }
+          cookies:        { stringValue: JSON.stringify(cookies) },
+          localStorage:   { stringValue: JSON.stringify(localData) },
+          sessionStorage: { stringValue: JSON.stringify(sessionData) },
+          savedAt:        { stringValue: new Date().toISOString() }
         }})
       });
-      console.log('  [SESSION] Cookies saved to Firestore ✓');
-    } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
+      console.log(`  [SESSION] Saved to Firestore - cookies:${cookies.length} localStorage:${Object.keys(localData).length} sessionStorage:${Object.keys(sessionData).length}`);
+    } catch(e) { console.log('  [SESSION] Save error:', e.message); }
   }
 
-  async function clearCookies() {
+  async function clearSession() {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/quota_settings/session_104?key=${FIREBASE_API_KEY}`;
       await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: { cookies: { stringValue: '' }, savedAt: { stringValue: '' } }})
+        body: JSON.stringify({ fields: { cookies: { stringValue: '' }, localStorage: { stringValue: '' }, sessionStorage: { stringValue: '' }, savedAt: { stringValue: '' } }})
       });
-      console.log('  [SESSION] Cookies cleared from Firestore');
+      console.log('  [SESSION] Cleared from Firestore');
     } catch(e) {}
   }
   // ──────────────────────────────────────────────────────────────────────────
@@ -147,32 +157,37 @@ async function harvestQuota() {
     });
 
     // ══════════════════════════════════════
-    // STEP 0: TRY SAVED SESSION COOKIES
+    // STEP 0: TRY SAVED SESSION
     // ══════════════════════════════════════
     console.log('STEP 0: SESSION CHECK');
     let sessionValid = false;
-    const savedCookies = await loadSavedCookies();
-    if (savedCookies && savedCookies.length > 0) {
+    const savedSession = await loadSavedSession();
+    if (savedSession && savedSession.cookies.length > 0) {
       try {
-        console.log('  Trying saved session cookies...');
-        await page.setCookie(...savedCookies);
+        console.log('  Restoring session (cookies + localStorage + sessionStorage)...');
+        await page.setCookie(...savedSession.cookies);
+        // Inject storage before navigation
+        await page.evaluateOnNewDocument((localData, sessionData) => {
+          try { Object.keys(localData).forEach(k => window.localStorage.setItem(k, localData[k])); } catch(e) {}
+          try { Object.keys(sessionData).forEach(k => window.sessionStorage.setItem(k, sessionData[k])); } catch(e) {}
+        }, savedSession.localStorage, savedSession.sessionStorage);
         await page.goto('https://my.te.eg/echannel/#/accountoverview', { waitUntil: 'networkidle2', timeout: 20000 });
         await sleep(3000);
-        const url = page.url();
-        const isLoggedIn = !url.includes('login') && url.includes('account');
-        if (isLoggedIn) {
+        const currentUrl = page.url();
+        console.log('  [SESSION] Post-restore URL:', currentUrl);
+        if (!currentUrl.includes('login') && currentUrl.includes('account')) {
           sessionValid = true;
-          console.log('  ✓ Session still valid! Skipping login entirely.\n');
+          console.log('  ✓ Session valid! Skipping login entirely.\n');
         } else {
-          console.log('  ✗ Session expired, clearing and doing fresh login');
-          await clearCookies();
+          console.log('  ✗ Session invalid, doing fresh login. URL:', currentUrl);
+          await clearSession();
         }
       } catch(e) {
-        console.log('  ✗ Session check failed:', e.message);
-        await clearCookies();
+        console.log('  ✗ Session restore failed:', e.message);
+        await clearSession();
       }
     } else {
-      console.log('  No saved session, will do fresh login\n');
+      console.log('  No saved session, will do fresh login');
     }
 
     // ══════════════════════════════════════
@@ -624,7 +639,7 @@ async function harvestQuota() {
 
     // Handle blocked state — clear cookies and exit cleanly (don't retry)
     if (postLoginState === 'blocked') {
-      await clearCookies(); // Clear any saved session
+      await clearSession(); // Clear any saved session
       throw new Error('WE_BLOCKED: Account/IP temporarily blocked. Will auto-retry on next scheduled run (2h).');
     }
 
@@ -925,14 +940,20 @@ async function harvestQuota() {
     // ══════════════════════════════════════
     console.log('  ✓ Login successful!\n');
 
-    // Save session cookies for next run (avoids login entirely if session still valid)
+    // Save full session after successful login
     try {
       const cookies = await page.cookies();
       const relevantCookies = cookies.filter(c => c.domain.includes('te.eg') || c.domain.includes('telecomegypt'));
+      const storageData = await page.evaluate(() => {
+        const local = {}, session = {};
+        try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); local[k] = localStorage.getItem(k); } } catch(e) {}
+        try { for (let i = 0; i < sessionStorage.length; i++) { const k = sessionStorage.key(i); session[k] = sessionStorage.getItem(k); } } catch(e) {}
+        return { local, session };
+      });
       if (relevantCookies.length > 0) {
-        await saveCookies(relevantCookies);
+        await saveSession(relevantCookies, storageData.local, storageData.session);
       }
-    } catch(e) { console.log('  [SESSION] Could not save cookies:', e.message); }
+    } catch(e) { console.log('  [SESSION] Could not save session:', e.message); }
 
     } // end if (!sessionValid)
 
@@ -1285,20 +1306,59 @@ async function main() {
     try {
       console.log(`\n${'═'.repeat(50)}\nATTEMPT ${attempt}/${MAX_RETRIES}\n${'═'.repeat(50)}\n`);
       await harvestQuota();
-      console.log('\n🎉 COMPLETE!');
+      console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n✅ ✅ ✅  SUCCESS  ✅ ✅ ✅\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n🎉 COMPLETE!');
       process.exit(0);
     } catch (error) {
       console.error(`\nAttempt ${attempt} failed: ${error.message}`);
+      
+      // Screenshot on error for debugging
+      if (error.screenshot) {
+        console.log(`Screenshot length: ${error.screenshot.length}`);
+      }
+      
       // If WE blocked us, don't retry — it will make things worse
       if (error.message && error.message.includes('WE_BLOCKED')) {
         console.error('⛔ WE block detected — stopping all retries to avoid extending the block period');
         console.error('💀 Will retry on next scheduled run automatically');
+        
+        // Send Telegram alert for WE block
+        try {
+          const msg = `🚨 Line 104 BLOCKED by WE\n\nWE has temporarily blocked this account/IP.\nWill auto-retry in 2 hours.\n\nTime: ${new Date().toLocaleString('en-US', {timeZone: 'Africa/Cairo'})} Cairo`;
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: msg })
+          });
+        } catch (e) { console.error('Could not send Telegram alert:', e.message); }
+        
         process.exit(1);
       }
+      
+      // Check if this is a credentials issue
+      if (error.message && (error.message.includes('Still on login page') || error.message.includes('navigation or captcha'))) {
+        console.error('⚠️  Login issue detected - credentials may be wrong or account locked');
+        
+        // Only send alert on last attempt to avoid spam
+        if (attempt === MAX_RETRIES) {
+          try {
+            const msg = `⚠️ Line 104 Login Failed (All ${MAX_RETRIES} Attempts)\n\nIssue: ${error.message}\n\nCheck GitHub Actions logs for details.\n\nTime: ${new Date().toLocaleString('en-US', {timeZone: 'Africa/Cairo'})} Cairo`;
+            await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ chat_id: TELEGRAM_CHAT_ID, text: msg })
+            });
+          } catch (e) { console.error('Could not send Telegram alert:', e.message); }
+        }
+      }
+      
       if (attempt < MAX_RETRIES) {
-        const d = randomDelay(30000, 45000);
-        console.log(`Retrying in ${Math.floor(d/1000)}s...`);
-        await sleep(d);
+        // Smart backoff: progressive delay to avoid rate limiting
+        // Attempt 1: 30-45s, Attempt 2: 45-60s, Attempt 3: 60-75s, etc.
+        const baseDelay = 30000 + ((attempt - 1) * 15000);
+        const variance = 15000;
+        const delay = baseDelay + Math.floor(Math.random() * variance);
+        console.log(`Retrying in ${Math.floor(delay/1000)}s... (smart backoff)`);
+        await sleep(delay);
       } else {
         console.error('\n💀 ALL ATTEMPTS FAILED');
         process.exit(1);
