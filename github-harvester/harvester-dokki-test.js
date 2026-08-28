@@ -582,7 +582,7 @@ async function harvestQuota() {
 
     // ======================================
     if (postLoginState === 'captcha') {
-      console.log('  [CAPTCHA] EXTREME Engine v5 - 10 filters + consensus voting\n');
+      console.log('  [CAPTCHA] EXTREME Engine v5 - 13 filters + consensus voting\n');
 
       // HELPER: Find captcha image - tries multiple selectors
       async function findCaptchaImg() {
@@ -632,6 +632,9 @@ async function harvestQuota() {
             else if (f === 'antiBlue') { keep = !isBlue && !isGray; }
             else if (f === 'colorOnly') { const max=Math.max(r,g,b),min=Math.min(r,g,b),sat=max===0?0:(max-min)/max; keep=sat>0.3&&r>b&&!isBlue; }
             else if (f === 'notBlueNotGray') { keep = !isBlue && !(isGray && r > 140); }
+            else if (f === 'blueInverter') { const blueness=b-Math.max(r,g); keep=blueness<-20; }
+            else if (f === 'channelDivide') { const ratio=b>0?r/b:r; keep=ratio>1.5&&r>40; }
+            else if (f === 'hsvIsolation') { const max=Math.max(r,g,b),min=Math.min(r,g,b),delta=max-min; let hue=0; if(delta>0){if(max===r)hue=((g-b)/delta+(g<b?6:0))*60;else if(max===g)hue=((b-r)/delta+2)*60;else hue=((r-g)/delta+4)*60;} const sat=max===0?0:delta/max; keep=((hue>=0&&hue<=50&&sat>0.3)||(sat<0.3&&max<140))&&max>20; }
             d[i] = d[i+1] = d[i+2] = keep ? 0 : 255;
             d[i+3] = 255;
           }
@@ -692,8 +695,8 @@ async function harvestQuota() {
         return await page.evaluate(() => !!document.querySelector('.ant-modal-content, .ant-modal, [class*="modal"]'));
       }
 
-      // MAIN EXTREME CAPTCHA LOOP - 12 rounds, 10 filters, consensus voting
-      const FILTERS = ['redOnly','megaRed','redStrict','redWide','darkNoBlue','saturationBoost','warmColors','antiBlue','colorOnly','notBlueNotGray'];
+      // MAIN EXTREME CAPTCHA LOOP - 12 rounds, 13 filters, consensus voting
+      const FILTERS = ['redOnly','megaRed','redStrict','redWide','darkNoBlue','saturationBoost','warmColors','antiBlue','colorOnly','notBlueNotGray','blueInverter','channelDivide','hsvIsolation'];
       let captchaSolved = false;
 
       for (let round = 1; round <= 12 && !captchaSolved; round++) {
@@ -763,9 +766,9 @@ async function harvestQuota() {
           }
           if (!imgHandle) { console.log('    ! No valid captcha image after 15s'); continue; }
 
-          // STUDY: Process with all 10 filters
+          // STUDY: Process with all 13 filters
           let allAnswers = [];
-          console.log('    [STUDY] Processing with all 10 filters...');
+          console.log('    [STUDY] Processing with all 13 filters...');
           for (const filter of FILTERS) {
             const b64 = await canvasProcess(imgHandle, filter);
             if (!b64) continue;
