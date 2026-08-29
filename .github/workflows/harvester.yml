@@ -36,7 +36,7 @@ jobs:
           cd github-harvester
           npm install --prefer-offline --no-audit
       
-      - name: Run harvester
+      - name: Run harvester test
         env:
           FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
           FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
@@ -47,4 +47,4 @@ jobs:
           TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
         run: |
           cd github-harvester
-          node harvester.js
+          node harvester-test.js
