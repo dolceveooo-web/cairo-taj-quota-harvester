@@ -1133,15 +1133,49 @@ async function harvestQuota() {
         });
         if (!clicked) throw new Error('Option 0237600094 not found');
         console.log('    Clicked:', clicked);
+        // Wait for page to begin transition before dismissing ads
+        await sleep(3000);
+        // Dismiss any immediate ad popup
+        try {
+          await page.evaluate(() => {
+            for (const sel of ['button[class*="close"]','.ant-modal-close','[class*="modal"] button']) {
+              for (const el of document.querySelectorAll(sel)) {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 && r.height > 0 && !/login|submit/i.test(el.textContent?.trim()||'')) el.click();
+              }
+            }
+          });
+        } catch(e) {}
 
         // Poll aggressively ظ¤ capture data THE MOMENT the page shows 0237600094 AND full data loaded
         for (let w = 0; w < 30; w++) {
           await sleep(1000);
+          // Dismiss any ad that appeared after line switch - ads redirect to login
+          try {
+            await page.evaluate(() => {
+              const closeSelectors = [
+                'button[class*="close"]', '.ant-modal-close', '.ant-modal-close-x',
+                '[class*="modal"] button', '[style*="position: fixed"] button',
+                '[style*="position:fixed"] button', 'button[aria-label*="close" i]'
+              ];
+              for (const sel of closeSelectors) {
+                for (const el of document.querySelectorAll(sel)) {
+                  const r = el.getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0) {
+                    const t = el.textContent?.trim() || '';
+                    if (!/^(login|submit|confirm|sign in)$/i.test(t)) { el.click(); }
+                  }
+                }
+              }
+              const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
+              if (bd) bd.click();
+            });
+          } catch(e) {}
           const url = page.url();
           const check = await checkPage094();
 
-          // If stuck on login after 5s, fail this method
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login after line switch');
+          // If stuck on login after 3s, fail this method
+          if (url.includes('#/login') && w > 3) throw new Error('Redirected to login after line switch');
 
           // CRITICAL: Must satisfy ALL conditions for valid capture:
           // 1. check.hasRemaining = true (data visible)
@@ -1201,10 +1235,31 @@ async function harvestQuota() {
         // Same aggressive capture strategy with ALL verification criteria
         for (let w = 0; w < 25; w++) {
           await sleep(1000);
+          // Dismiss any ad that appeared after line switch - ads redirect to login
+          try {
+            await page.evaluate(() => {
+              const closeSelectors = [
+                'button[class*="close"]', '.ant-modal-close', '.ant-modal-close-x',
+                '[class*="modal"] button', '[style*="position: fixed"] button',
+                '[style*="position:fixed"] button', 'button[aria-label*="close" i]'
+              ];
+              for (const sel of closeSelectors) {
+                for (const el of document.querySelectorAll(sel)) {
+                  const r = el.getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0) {
+                    const t = el.textContent?.trim() || '';
+                    if (!/^(login|submit|confirm|sign in)$/i.test(t)) { el.click(); }
+                  }
+                }
+              }
+              const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
+              if (bd) bd.click();
+            });
+          } catch(e) {}
           const url = page.url();
           const check = await checkPage094();
 
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+          if (url.includes('#/login') && w > 3) throw new Error('Redirected to login');
 
           // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
@@ -1238,10 +1293,31 @@ async function harvestQuota() {
         await page.select('select', '0237600094').catch(() => {});
         for (let w = 0; w < 25; w++) {
           await sleep(1000);
+          // Dismiss any ad that appeared after line switch - ads redirect to login
+          try {
+            await page.evaluate(() => {
+              const closeSelectors = [
+                'button[class*="close"]', '.ant-modal-close', '.ant-modal-close-x',
+                '[class*="modal"] button', '[style*="position: fixed"] button',
+                '[style*="position:fixed"] button', 'button[aria-label*="close" i]'
+              ];
+              for (const sel of closeSelectors) {
+                for (const el of document.querySelectorAll(sel)) {
+                  const r = el.getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0) {
+                    const t = el.textContent?.trim() || '';
+                    if (!/^(login|submit|confirm|sign in)$/i.test(t)) { el.click(); }
+                  }
+                }
+              }
+              const bd = document.querySelector('.ant-modal-mask, [class*="backdrop"]');
+              if (bd) bd.click();
+            });
+          } catch(e) {}
           const url = page.url();
           const check = await checkPage094();
 
-          if (url.includes('#/login') && w > 5) throw new Error('Redirected to login');
+          if (url.includes('#/login') && w > 3) throw new Error('Redirected to login');
 
           // ALL 6 conditions must be true for valid capture
           if (check.hasRemaining && check.has094) {
