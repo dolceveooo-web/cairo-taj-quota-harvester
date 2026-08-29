@@ -47,5 +47,5 @@ jobs:
           TELEGRAM_GROUP_ID: ${{ secrets.TELEGRAM_GROUP_ID }}
         run: |
           cd github-harvester
-          node harvester.js
+          node harvester-dokki.js
           
